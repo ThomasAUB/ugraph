@@ -9,9 +9,9 @@
 
 namespace ugraph {
 
-    // RoutedGraph is parameterized directly on the edge pack so it can drive both Topology and routing.
+    // PipelineGraph is parameterized directly on the edge pack so it can drive both Topology and routing.
     template<typename data_t, typename... edges_t>
-    class RoutedGraph {
+    class PipelineGraph {
 
         using topology_t = Topology<edges_t...>;
         static_assert(!topology_t::is_cyclic(), "Cycle detected in graph definition");
@@ -32,7 +32,10 @@ namespace ugraph {
 
         // Producer list (unique (vertex id, output port))
         template<std::size_t _vid, std::size_t _port>
-        struct producer_tag { static constexpr std::size_t vid = _vid; static constexpr std::size_t port = _port; };
+        struct producer_tag {
+            static constexpr std::size_t vid = _vid;
+            static constexpr std::size_t port = _port;
+        };
         template<typename... Ts> struct type_list {};
         template<typename List, typename Tag> struct append_unique;
         template<typename Tag, typename... Ts>
@@ -56,10 +59,13 @@ namespace ugraph {
         // Helpers
         static constexpr std::size_t id_to_pos(std::size_t id) {
             auto ids = topology_t::ids();
-            for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == id) return i; return (std::size_t) -1;
+            for (std::size_t i = 0; i < topology_t::size(); ++i) {
+                if (ids[i] == id) {
+                    return i;
+                }
+            }
+            return (std::size_t) -1;
         }
-        // removed unused find_prod_index placeholder (replaced by find_prod_index_impl below)
-        // We can't easily index type_list without repeating utilities; rebuild minimal version:
         template<std::size_t N, typename List> struct type_list_at;
         template<std::size_t N, typename T, typename... Ts>
         struct type_list_at<N, type_list<T, Ts...>> : type_list_at<N - 1, type_list<Ts...>> {};
@@ -83,22 +89,67 @@ namespace ugraph {
                 [] <std::size_t... I>(lifetimes_t & l, std::index_sequence<I...>) {
                     ((l.start[I] = id_to_pos(type_list_at<I, producer_list>::type::vid), l.end[I] = l.start[I]), ...);
                 }(lt, std::make_index_sequence<producer_count>{});
-                // update ends
-                ([&] () { using ET = edge_traits<edges_t>; constexpr std::size_t idx = find_prod_index_impl<ET::src_id, ET::src_port_index, 0>::value; const std::size_t dpos = id_to_pos(ET::dst_id); if (dpos > lt.end[idx]) lt.end[idx] = dpos; }(), ...);
+                (
+                    [&] () {
+                        using ET = edge_traits<edges_t>;
+                        constexpr std::size_t idx = find_prod_index_impl<ET::src_id, ET::src_port_index, 0>::value;
+                        const std::size_t dpos = id_to_pos(ET::dst_id);
+                        if (dpos > lt.end[idx]) {
+                            lt.end[idx] = dpos;
+                        }
+                    }(), ...
+                        );
             }
             return lt;
         }
         static constexpr auto lifetimes = build_lifetimes();
 
         static constexpr auto assign_buffers() {
-            struct result { std::array<std::size_t, producer_count == 0 ? 1 : producer_count> assign {}; std::size_t buffers = 0; };
+            struct result {
+                std::array<std::size_t, producer_count == 0 ? 1 : producer_count> assign {};
+                std::size_t buffers = 0;
+            };
             result r {};
             if constexpr (producer_count > 0) {
-                std::array<std::size_t, producer_count> order {}; for (std::size_t i = 0; i < producer_count; ++i) order[i] = i;
-                // selection sort by start
-                for (std::size_t i = 0; i < producer_count; ++i) { std::size_t best = i; for (std::size_t j = i + 1; j < producer_count; ++j) if (lifetimes.start[order[j]] < lifetimes.start[order[best]]) best = j; if (best != i) { auto tmp = order[i]; order[i] = order[best]; order[best] = tmp; } }
+                std::array<std::size_t, producer_count> order {};
+                for (std::size_t i = 0; i < producer_count; ++i) {
+                    order[i] = i;
+                }
+                for (std::size_t i = 0; i < producer_count; ++i) {
+                    std::size_t best = i;
+                    for (std::size_t j = i + 1; j < producer_count; ++j) {
+                        if (lifetimes.start[order[j]] < lifetimes.start[order[best]]) {
+                            best = j;
+                            if (best != i) {
+                                auto tmp = order[i];
+                                order[i] = order[best];
+                                order[best] = tmp;
+                            }
+                        }
+                    }
+                }
                 std::array<std::size_t, producer_count> buffer_end {};
-                for (std::size_t k = 0; k < producer_count; ++k) { auto p = order[k]; auto s = lifetimes.start[p]; auto e = lifetimes.end[p]; std::size_t reuse = r.buffers; for (std::size_t b = 0; b < r.buffers; ++b) if (buffer_end[b] < s) { reuse = b; break; } if (reuse == r.buffers) { buffer_end[r.buffers] = e; r.assign[p] = r.buffers; ++r.buffers; } else { buffer_end[reuse] = e; r.assign[p] = reuse; } }
+                for (std::size_t k = 0; k < producer_count; ++k) {
+                    auto p = order[k];
+                    auto s = lifetimes.start[p];
+                    auto e = lifetimes.end[p];
+                    std::size_t reuse = r.buffers;
+                    for (std::size_t b = 0; b < r.buffers; ++b) {
+                        if (buffer_end[b] < s) {
+                            reuse = b;
+                            break;
+                        }
+                    }
+                    if (reuse == r.buffers) {
+                        buffer_end[r.buffers] = e;
+                        r.assign[p] = r.buffers;
+                        ++r.buffers;
+                    }
+                    else {
+                        buffer_end[reuse] = e;
+                        r.assign[p] = reuse;
+                    }
+                }
             }
             return r;
         }
@@ -107,30 +158,48 @@ namespace ugraph {
 
         template<std::size_t I>
         static constexpr std::size_t buffer_for_impl(std::size_t vid, std::size_t port) {
-            if constexpr (I >= producer_count) return (std::size_t) -1;
+            if constexpr (I >= producer_count) {
+                return (std::size_t) -1;
+            }
             else {
                 using PT = typename type_list_at<I, producer_list>::type;
                 return (PT::vid == vid && PT::port == port) ? assignment.assign[I] : buffer_for_impl<I + 1>(vid, port);
             }
         }
         static constexpr std::size_t buffer_for(std::size_t vid, std::size_t port) {
-            if constexpr (producer_count == 0) return (std::size_t) -1; else return buffer_for_impl<0>(vid, port);
+            if constexpr (producer_count == 0) {
+                return (std::size_t) -1;
+            }
+            else {
+                return buffer_for_impl<0>(vid, port);
+            }
         }
 
-        // Runtime storage
         template<std::size_t... I>
         static auto make_vertices_tuple_t(std::index_sequence<I...>) -> std::tuple<typename topology_t::template find_type_by_id<topology_t::ids()[I]>::type*...>;
         using vertices_tuple_t = decltype(make_vertices_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
         template<std::size_t Id, typename Edge>
         static auto try_edge(const Edge& e) {
-            using S = typename edge_traits<Edge>::src_vertex_t; if constexpr (S::id() == Id) return &e.first.mVertex; else {
-                using D = typename edge_traits<Edge>::dst_vertex_t; if constexpr (D::id() == Id) return &e.second.mVertex; else return (typename topology_t::template find_type_by_id<Id>::type*)nullptr;
+            using S = typename edge_traits<Edge>::src_vertex_t;
+            if constexpr (S::id() == Id) {
+                return &e.first.mVertex;
+            }
+            else {
+                using D = typename edge_traits<Edge>::dst_vertex_t;
+                if constexpr (D::id() == Id) {
+                    return &e.second.mVertex;
+                }
+                else {
+                    return (typename topology_t::template find_type_by_id<Id>::type*)nullptr;
+                }
             }
         }
         template<std::size_t Id>
         static auto get_vertex_ptr(const edges_t&... es) {
-            typename topology_t::template find_type_by_id<Id>::type* r = nullptr; ((r = r ? r : try_edge<Id>(es)), ...); return r;
+            typename topology_t::template find_type_by_id<Id>::type* r = nullptr;
+            ((r = r ? r : try_edge<Id>(es)), ...);
+            return r;
         }
         template<std::size_t... I>
         static vertices_tuple_t build(std::index_sequence<I...>, const edges_t&... es) {
@@ -155,49 +224,107 @@ namespace ugraph {
             dvp->template set_input_buffer<d_port>(mBuffers[buf_idx]);
         }
 
-        template<std::size_t... I, typename F>
-        static constexpr void apply_vertex_types_impl(std::index_sequence<I...>, F&& f) {
-            // Directly invoke the functor with a default-constructed vertex wrapper type
-            (f(typename topology_t::template find_type_by_id<topology_t::ids()[I]>::type {}), ...);
+        template<typename Vtx>
+        static void run_vertex(Vtx& vertex) {
+            using V = std::decay_t<Vtx>;
+            auto& u = vertex.get_user_type();
+            constexpr std::size_t IN = V::input_count();
+            constexpr std::size_t OUT = V::output_count();
+            auto invoke = [&] <std::size_t... I, std::size_t... O>(
+                std::index_sequence<I...>, std::index_sequence<O...>) {
+                if constexpr (IN == 0 && OUT == 0) {
+                }
+                else if constexpr (IN == 0) {
+                    u.process(vertex.template output<O>()...);
+                }
+                else if constexpr (OUT == 0) {
+                    u.process(vertex.template input<I>()...);
+                }
+                else {
+                    u.process(vertex.template input<I>()..., vertex.template output<O>()...);
+                }
+            };
+            invoke(std::make_index_sequence<IN>{}, std::make_index_sequence<OUT>{});
+        }
+
+        template<std::size_t... I>
+        void execute_impl(std::index_sequence<I...>) {
+            (run_vertex(*std::get<I>(mVertices)), ...);
         }
 
     public:
 
-        RoutedGraph(const edges_t&... es) : mVertices(build(std::make_index_sequence<topology_t::size()>{}, es...)) {
-            // Homogeneous data_t check (folded static_assert)
-            static_assert(((std::is_same_v<typename edge_traits<edges_t>::src_vertex_t::data_t_type, data_t> && std::is_same_v<typename edge_traits<edges_t>::dst_vertex_t::data_t_type, data_t>) && ...), "Mixed data_t types in graph");
+        PipelineGraph(const edges_t&... es) :
+            mVertices(build(std::make_index_sequence<topology_t::size()>{}, es...)) {
+            static_assert(
+                ((
+                    std::is_same_v<typename edge_traits<edges_t>::src_vertex_t::data_t_type, data_t> &&
+                    std::is_same_v<typename edge_traits<edges_t>::dst_vertex_t::data_t_type, data_t>) && ...),
+                "Mixed data_t types in graph"
+                );
             auto ids_arr = topology_t::ids();
             auto get_ptr = [this, ids_arr] (std::size_t id) -> void* {
                 void* result = nullptr;
-                std::apply([&] (auto*... vp) { std::size_t idx = 0; (void) std::initializer_list<int>{ ((ids_arr[idx] == id ? result = vp : result), ++idx, 0)... }; }, mVertices);
+                std::apply(
+                    [&] (auto*... vp) {
+                        std::size_t idx = 0;
+                        (void) std::initializer_list<int>{
+                            ((ids_arr[idx] == id ? result = vp : result), ++idx, 0)...
+                        };
+                    },
+                    mVertices
+                );
                 return result;
                 };
-            (void) std::initializer_list<int>{ (wire_edge<edge_traits<edges_t>>(get_ptr), 0)... };
+            (void) std::initializer_list<int>{
+                (wire_edge<edge_traits<edges_t>>(get_ptr), 0)...
+            };
         }
 
         template<typename F>
-        void apply_vertex(F&& f) const { std::apply([&] (auto*... vp) { f(vp->get_user_type()...); }, mVertices); }
+        void apply(F&& f) const { std::apply([&] (auto*... vp) { f(vp->get_user_type()...); }, mVertices); }
 
-        // Compile-time visitation of vertex types via underlying Topology (no type_tag indirection anymore)
         template<typename F>
-        static constexpr void apply_vertex_types(F&& f) { apply_vertex_types_impl(std::make_index_sequence<topology_t::size()>{}, std::forward<F>(f)); }
+        void for_each(F&& f) { std::apply([&] (auto*... vp) { (f(*vp), ...); }, mVertices); }
+        template<typename F>
+        void for_each(F&& f) const { std::apply([&] (auto const*... vp) { (f(*vp), ...); }, mVertices); }
 
         static constexpr auto ids() { return topology_t::ids(); }
         static constexpr std::size_t size() { return topology_t::size(); }
         static constexpr std::size_t buffer_count() { return _buffer_count; }
 
-        // Buffer introspection APIs
         template<std::size_t VID, std::size_t PORT>
         static constexpr std::size_t buffer_index_for() { return buffer_for(VID, PORT); }
         static constexpr std::size_t buffer_index(std::size_t vid, std::size_t port) { return buffer_for(vid, port); }
+
+        void execute() { execute_impl(std::make_index_sequence<topology_t::size()>{}); }
+
+        template<typename Instrument>
+        void execute(Instrument& inst) {
+            if constexpr (!Instrument::enabled) {
+                execute_impl(std::make_index_sequence<topology_t::size()>{});
+            }
+            else {
+                inst.on_pipeline_start();
+                std::size_t idx = 0;
+                std::apply(
+                    [&] (auto*... vp) {
+                        ((inst.on_vertex_start(idx, *vp),
+                            run_vertex(*vp),
+                            inst.on_vertex_end(idx, *vp),
+                            ++idx), ...);
+                    },
+                    mVertices
+                );
+                inst.on_pipeline_end();
+            }
+        }
     };
 
-    // Deduction guide: allows "RoutedGraph(e1, e2, ...)" without specifying data_t explicitly.
-    // We deduce data_t from the first edge's source vertex data_t_type. All edges must already
-    // match this data_t (enforced by static_assert in the constructor), otherwise compilation fails.
+    // Deduction guide: allows "PipelineGraph(e1, e2, ...)" without specifying data_t explicitly.
     template<typename E0, typename... ERest>
-    RoutedGraph(E0 const&, ERest const&...)
-        -> RoutedGraph<
+    PipelineGraph(E0 const&, ERest const&...)
+        -> PipelineGraph<
         typename std::decay_t<E0>::first_type::vertex_type::data_t_type,
         std::decay_t<E0>, std::decay_t<ERest>...>;
 
