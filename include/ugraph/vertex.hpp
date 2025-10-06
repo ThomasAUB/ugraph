@@ -90,7 +90,19 @@ namespace ugraph {
         }
 
         template<std::size_t index>
+        constexpr const data_t& input() const {
+            static_assert(index < _input_count);
+            return *mInputs[index];
+        }
+
+        template<std::size_t index>
         constexpr data_t& output() {
+            static_assert(index < _output_count);
+            return *mOutputs[index];
+        }
+
+        template<std::size_t index>
+        constexpr const data_t& output() const {
             static_assert(index < _output_count);
             return *mOutputs[index];
         }

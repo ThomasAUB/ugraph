@@ -29,7 +29,8 @@ namespace ugraph {
             static constexpr bool exists = ((V::id() == Ts::id()) || ... || false);
             using type = std::conditional_t<exists, type_list<Ts...>, type_list<Ts..., V>>;
         };
-        template<typename List, typename Edge> struct list_add_edge_vertices {
+        template<typename List, typename Edge>
+        struct list_add_edge_vertices {
             using with_src = typename list_append_unique<List, typename edge_traits<Edge>::src_vertex_t>::type;
             using type = typename list_append_unique<with_src, typename edge_traits<Edge>::dst_vertex_t>::type;
         };
@@ -65,23 +66,54 @@ namespace ugraph {
         static constexpr auto edges_ids = make_edges_ids();
 
         // Kahn topological sort executed at compile time.
-        struct topo_result { std::array<std::size_t, vertex_count> order {}; bool has_cycle = false; };
+        struct topo_result {
+            std::array<std::size_t, vertex_count> order {};
+            bool has_cycle = false;
+        };
         static constexpr topo_result compute_topology() {
             topo_result r {};
             std::array<std::size_t, vertex_count> indeg {};
-            auto id2idx = [] (std::size_t id) constexpr {
-                for (std::size_t i = 0; i < vertex_count; ++i) if (vertex_ids[i] == id) return i; return (std::size_t) vertex_count; };
-            for (auto& e : edges_ids) { auto idx = id2idx(e.second); if (idx < vertex_count) ++indeg[idx]; }
-            std::array<bool, vertex_count> used {}; std::size_t placed = 0;
+            auto id2idx =
+                [] (std::size_t id) constexpr {
+                for (std::size_t i = 0; i < vertex_count; ++i) {
+                    if (vertex_ids[i] == id) {
+                        return i;
+                    }
+                }
+                return (std::size_t) vertex_count;
+                };
+            for (auto& e : edges_ids) {
+                auto idx = id2idx(e.second);
+                if (idx < vertex_count) {
+                    ++indeg[idx];
+                }
+            }
+            std::array<bool, vertex_count> used {};
+            std::size_t placed = 0;
             while (placed < vertex_count) {
                 std::size_t pick = vertex_count;
-                for (std::size_t i = 0; i < vertex_count; ++i) if (!used[i] && indeg[i] == 0) { pick = i; break; }
-                if (pick == vertex_count) { // cycle: return original order for determinism
-                    r.has_cycle = true; for (std::size_t i = 0; i < vertex_count; ++i) r.order[i] = vertex_ids[i]; return r;
+                for (std::size_t i = 0; i < vertex_count; ++i) {
+                    if (!used[i] && indeg[i] == 0) {
+                        pick = i;
+                        break;
+                    }
                 }
-                r.order[placed++] = vertex_ids[pick]; used[pick] = true;
-                for (auto& e : edges_ids) if (e.first == vertex_ids[pick]) {
-                    auto idx = id2idx(e.second); if (idx < vertex_count && indeg[idx] > 0) --indeg[idx];
+                if (pick == vertex_count) { // cycle: return original order for determinism
+                    r.has_cycle = true;
+                    for (std::size_t i = 0; i < vertex_count; ++i) {
+                        r.order[i] = vertex_ids[i];
+                        return r;
+                    }
+                }
+                r.order[placed++] = vertex_ids[pick];
+                used[pick] = true;
+                for (auto& e : edges_ids) {
+                    if (e.first == vertex_ids[pick]) {
+                        auto idx = id2idx(e.second);
+                        if (idx < vertex_count && indeg[idx] > 0) {
+                            --indeg[idx];
+                        }
+                    }
                 }
             }
             return r;
@@ -91,13 +123,30 @@ namespace ugraph {
 
         // Mapping from vertex id -> vertex type
         template<std::size_t Id, typename V, typename... Vs>
-        struct find_impl { using type = std::conditional_t<(V::id() == Id), V, typename find_impl<Id, Vs...>::type>; };
+        struct find_impl {
+            using type = std::conditional_t<(V::id() == Id), V, typename find_impl<Id, Vs...>::type>;
+        };
         template<std::size_t Id, typename V>
-        struct find_impl<Id, V> { using type = std::conditional_t<(V::id() == Id), V, void>; };
+        struct find_impl<Id, V> {
+            using type = std::conditional_t<(V::id() == Id), V, void>;
+        };
 
         template<std::size_t... I, typename F>
-        static constexpr void apply_vertex_types_impl(std::index_sequence<I...>, F&& f) {
+        static constexpr void for_each_impl(std::index_sequence<I...>, F&& f) {
             (f(typename find_type_by_id<topo.order[I]>::type {}), ...);
+        }
+
+        // Helper for variadic apply: invokes a callable once with all vertex types.
+        // Supports both void and non-void returning callables in a strictly standard-compliant way.
+        template<typename F, std::size_t... I>
+        static constexpr auto apply_variadic_impl(F&& f, std::index_sequence<I...>) {
+            using result_t = std::invoke_result_t<F, typename find_type_by_id<topo.order[I]>::type...>;
+            if constexpr (std::is_void_v<result_t>) {
+                std::forward<F>(f)(typename find_type_by_id<topo.order[I]>::type {}...);
+            }
+            else {
+                return std::forward<F>(f)(typename find_type_by_id<topo.order[I]>::type {}...);
+            }
         }
 
     public:
@@ -115,10 +164,28 @@ namespace ugraph {
             static_assert(!std::is_void_v<type>, "Vertex id not found");
         };
 
-        // Visit each vertex type in topological order. Lambda receives a unique tag object per type.
+        // for_each: Visit each vertex type in topological order. The callable receives a distinct
+        // default-constructed tag object instance for each vertex type.
         template<typename F>
-        static constexpr void apply_vertex_types(F&& f) {
-            apply_vertex_types_impl(std::make_index_sequence<vertex_count>{}, std::forward<F>(f));
+        static constexpr void for_each(F&& f) {
+            for_each_impl(std::make_index_sequence<vertex_count>{}, std::forward<F>(f));
+        }
+
+        // apply: Invoke a callable exactly once with all vertex tag objects passed variadically
+        // in topological order. Example:
+        //   Topology<Edges...>::apply([](auto vA, auto vB, auto vC){ /* ... */ });
+        // This enables operations that depend on the full pack of vertex types simultaneously.
+        // Public apply: forwards to variadic impl; supports both void and non-void lambdas without UB.
+        template<typename F>
+        static constexpr auto apply(F&& f)
+            -> decltype(apply_variadic_impl(std::forward<F>(f), std::make_index_sequence<vertex_count>{})) {
+            using result_t = decltype(apply_variadic_impl(std::forward<F>(f), std::make_index_sequence<vertex_count>{}));
+            if constexpr (std::is_void_v<result_t>) {
+                apply_variadic_impl(std::forward<F>(f), std::make_index_sequence<vertex_count>{});
+            }
+            else {
+                return apply_variadic_impl(std::forward<F>(f), std::make_index_sequence<vertex_count>{});
+            }
         }
 
     };

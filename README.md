@@ -11,7 +11,7 @@ Include once:
 
 - Topology: compile‑time only. Given edge types it computes (constexpr) topological order, detects cycles, and lets you visit vertex types. No runtime storage.
 
-- RoutedGraph: builds on Topology; wires concrete vertex instances, assigns and reuses data buffers (interval coloring), and offers runtime traversal & buffer introspection.
+- PipelineGraph : builds on Topology; wires concrete vertex instances, assigns and reuses data buffers (interval coloring), and offers runtime traversal & buffer introspection.
 
 ## 2. Pure Topology First (Vertex + Edge)
 Model a DAG purely at the type level—no instances, no buffers—useful for:
@@ -46,11 +46,11 @@ constexpr auto order = AppTopo::ids(); // e.g. {1,2,3,4}
 static_assert(AppTopo::size() == 4);
 
 // Run all subsystem inits in a guaranteed safe order
-AppTopo::apply_vertex_types([](auto tag){
-    using VertexType = decltype(tag);
-    using Subsystem  = typename VertexType::type; // Config, Logger, ...
-    Subsystem::init();
-});
+AppTopo::apply(
+    [] (auto... tag) {
+        (decltype(tag)::type::init(), ...); // Config::init(), Logger::init(), ...
+    }
+);
 ```
 Result: `Config::init()` → `Logger::init()` → `Database::init()` → `HttpServer::init()` (order may collapse parallel-ready nodes but always respects dependencies). This mode provides order, cycle detection, and type visitation.
 
@@ -67,14 +67,14 @@ ugraph::RoutingVertex<2, B, 1, 1, int> vB(b);
 ugraph::RoutingVertex<3, C, 1, 0, int> vC(c);
 ```
 
-## 4. Routed Graph (execution + buffers)
+## 4. Pipeline Graph (execution + buffers)
 ```cpp
-auto g = ugraph::RoutedGraph(
+auto g = ugraph::PipelineGraph(
     vA.out() >> vB.in(),
     vB.out() >> vC.in()
 );
 
-g.apply_vertex([](auto&... impl){ (impl.run(), ...); }); // runs A,B,C in order
+g.apply([](auto&... impl){ (impl.run(), ...); }); // runs A,B,C in order
 static_assert(decltype(g)::buffer_count() == 2);
 ```
 
@@ -89,7 +89,7 @@ std::size_t idx = g.buffer_index(1,0);
 ```
 
 ## 6. Cycle Detection
-Any cycle in the provided edge types triggers a static_assert in `Topology` (and thus in `RoutedGraph`).
+Any cycle in the provided edge types triggers a static_assert in `Topology` (and thus in `PipelineGraph`).
 
 ## 7. Pure Topology (with ports defined via RoutingVertex)
 ```cpp
@@ -98,9 +98,46 @@ static_assert(!T::is_cyclic());
 constexpr auto order = T::ids();      // vertex ids in topological order
 static_assert(T::size() == 3);
 // Visit vertex types
-T::apply_vertex_types([](auto tag){ using V = typename decltype(tag)::type; (void)sizeof(V); });
+T::for_each([](auto tag){ using V = typename decltype(tag)::type; (void)sizeof(V); });
+
+// Or gather all vertex tags in one call (variadic) if you need pack processing:
+auto all_ids = T::apply([](auto... tags) {
+    return std::array<std::size_t, sizeof...(tags)>{ decltype(tags)::id()... };
+});
 ```
 
 ---
-Minimal, fast, and explicit: pick `Topology` when you only need order & reflection; pick `RoutedGraph` when you also need wiring + buffer reuse.
+Minimal, fast, and explicit: pick `Topology` when you only need order & reflection; pick `PipelineGraph` when you also need wiring + buffer reuse.
+
+## 8. API Reference (Topology visitation)
+
+There are two complementary compile-time visitation primitives on `Topology`:
+
+1. for_each(F&& f)
+    Invokes `f(tag)` once per vertex in topological order. The tag is the `Vertex<id, UserType>` wrapper type (default constructed) so you can retrieve:
+    - `decltype(tag)::id()` – the stable id
+    - `typename decltype(tag)::type` – the user payload type (e.g. Config)
+
+    Example:
+    ```cpp
+    AppTopo::for_each([](auto tag){ using S = typename decltype(tag)::type; S::init(); });
+    ```
+
+2. apply(F&& f)
+    Invokes `f` exactly once with every vertex tag as a separate parameter in topological order. Useful for building constexpr arrays, forwarding packs, or generating aggregate structures without intermediate storage.
+
+    Example:
+    ```cpp
+    constexpr auto ids = AppTopo::apply([](auto... tags){
+         return std::array<std::size_t, sizeof...(tags)>{ decltype(tags)::id()... };
+    });
+    static_assert(ids[0] == 1);
+    ```
+
+        `apply` also accepts a lambda that returns `void`; in that case nothing is returned (unlike `for_each`, it still passes all tags in a single invocation). Example:
+        ```cpp
+        AppTopo::apply([](auto... tags){ (void)std::initializer_list<int>{ ( (void)decltype(tags)::id(), 0)... }; });
+        ```
+
+Choose `for_each` for simple independent actions per vertex; choose `apply` when you need the whole pack simultaneously.
 
