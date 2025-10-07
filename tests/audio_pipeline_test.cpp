@@ -278,9 +278,19 @@ TEST_CASE("audio pipeline manual equivalence and overhead") {
     auto g = pipeline.get_graph();
 
     using GraphType = decltype(g);
-    TimingInstrumentation<GraphType::size()> inst;
-    g.execute(inst);
-    uint64_t pipeline_ns = inst.pipeline_timer.duration_ns;
+
+    constexpr int iteration_count = 1'000'000;
+
+    Timer pipeline_timer;
+    pipeline_timer.start();
+
+    for (int i = 0; i < iteration_count; i++) {
+        g.execute();
+    }
+
+    pipeline_timer.stop();
+    uint64_t pipeline_ns = pipeline_timer.duration_ns;
+
     CHECK(pipeline_ns > 0);
 
     // Manual path with independently constructed modules (fresh state)
@@ -292,14 +302,18 @@ TEST_CASE("audio pipeline manual equivalence and overhead") {
 
     Timer manual_timer;
     manual_timer.start();
-    manual.s1.process(buf1);
-    manual.g1.process(buf1, buf1); // in-place gain
-    manual.s2.process(buf2);
-    manual.g2.process(buf2, buf2);
-    manual.s3.process(buf3);
-    manual.g3.process(buf3, buf3);
-    manual.mix.process(buf1, buf2, buf3, mixBuf);
-    manual.out.process(mixBuf);
+
+    for (int i = 0; i < iteration_count; i++) {
+        manual.s1.process(buf1);
+        manual.g1.process(buf1, buf1); // in-place gain
+        manual.s2.process(buf2);
+        manual.g2.process(buf2, buf2);
+        manual.s3.process(buf3);
+        manual.g3.process(buf3, buf3);
+        manual.mix.process(buf1, buf2, buf3, mixBuf);
+        manual.out.process(mixBuf);
+    }
+
     manual_timer.stop();
     uint64_t manual_ns = manual_timer.duration_ns;
 
@@ -313,10 +327,10 @@ TEST_CASE("audio pipeline manual equivalence and overhead") {
         double ratio = static_cast<double>(pipeline_ns) / static_cast<double>(manual_ns);
         // Very lenient upper bound; engine may include buffer routing + bookkeeping.
         CHECK(ratio < 50.0);
-        INFO("manual_ns=" << manual_ns << ", pipeline_ns=" << pipeline_ns << ", ratio=" << ratio);
+        INFO("manual_ns=" << manual_ns / iteration_count << ", pipeline_ns=" << pipeline_ns / iteration_count << ", ratio=" << ratio);
 
         // debug print
-        std::cout << "manual_ns=" << manual_ns << ", pipeline_ns=" << pipeline_ns << ", ratio=" << ratio << std::endl;
+        std::cout << "manual_ns=" << manual_ns / iteration_count << ", pipeline_ns=" << pipeline_ns / iteration_count << ", ratio=" << ratio << std::endl;
 
     }
     else {
