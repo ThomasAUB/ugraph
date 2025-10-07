@@ -30,9 +30,9 @@ TEST_CASE("runtime validation") {
     StageB b { "B" };
     StageC c { "C" };
 
-    ugraph::RoutingVertex<1, StageA, 0, 1, int> vA(a);
-    ugraph::RoutingVertex<2, StageB, 1, 1, int> vB(b);
-    ugraph::RoutingVertex<3, StageC, 1, 0, int> vC(c);
+    ugraph::PipelineVertex<1, StageA, 0, 1, int> vA(a);
+    ugraph::PipelineVertex<2, StageB, 1, 1, int> vB(b);
+    ugraph::PipelineVertex<3, StageC, 1, 0, int> vC(c);
 
     auto g = ugraph::PipelineGraph(
         vB.out() >> vC.in(),
@@ -60,10 +60,10 @@ TEST_CASE("basic topological sort test") {
     Proc1 pn4("n4");
     Proc2 pn3("n3");
 
-    ugraph::RoutingVertex<1, Proc1, 1, 1, int> n1(pn1);
-    ugraph::RoutingVertex<2, Proc1, 1, 1, int> n2(pn2);
-    ugraph::RoutingVertex<3, Proc2, 1, 1, int> n3(pn3);
-    ugraph::RoutingVertex<4, Proc1, 1, 1, int> n4(pn4);
+    ugraph::PipelineVertex<1, Proc1, 1, 1, int> n1(pn1);
+    ugraph::PipelineVertex<2, Proc1, 1, 1, int> n2(pn2);
+    ugraph::PipelineVertex<3, Proc2, 1, 1, int> n3(pn3);
+    ugraph::PipelineVertex<4, Proc1, 1, 1, int> n4(pn4);
 
     auto g = ugraph::PipelineGraph(
         n1.out() >> n2.in(),
@@ -106,9 +106,9 @@ TEST_CASE("topological sort verification") {
     Proc1 psink("sink");
     Proc2 pmiddle("middle");
 
-    ugraph::RoutingVertex<10, Proc1, 0, 1, int> source(psource);
-    ugraph::RoutingVertex<11, Proc2, 1, 1, int> middle(pmiddle);
-    ugraph::RoutingVertex<12, Proc1, 1, 0, int> sink(psink);
+    ugraph::PipelineVertex<10, Proc1, 0, 1, int> source(psource);
+    ugraph::PipelineVertex<11, Proc2, 1, 1, int> middle(pmiddle);
+    ugraph::PipelineVertex<12, Proc1, 1, 0, int> sink(psink);
 
     auto g = ugraph::PipelineGraph(
         source.out() >> middle.in(),
@@ -145,11 +145,11 @@ TEST_CASE("complex topological sort test") {
     Proc2 pproc1("proc1");
     Proc2 pmerger("merger");
 
-    ugraph::RoutingVertex<20, Proc1, 0, 2, int> source(psource);
-    ugraph::RoutingVertex<21, Proc2, 1, 1, int> proc1(pproc1);
-    ugraph::RoutingVertex<22, Proc1, 1, 1, int> proc2(pproc2);
-    ugraph::RoutingVertex<23, Proc2, 2, 1, int> merger(pmerger);
-    ugraph::RoutingVertex<24, Proc1, 1, 0, int> sink(psink);
+    ugraph::PipelineVertex<20, Proc1, 0, 2, int> source(psource);
+    ugraph::PipelineVertex<21, Proc2, 1, 1, int> proc1(pproc1);
+    ugraph::PipelineVertex<22, Proc1, 1, 1, int> proc2(pproc2);
+    ugraph::PipelineVertex<23, Proc2, 2, 1, int> merger(pmerger);
+    ugraph::PipelineVertex<24, Proc1, 1, 0, int> sink(psink);
 
     auto g = ugraph::PipelineGraph(
         source.out<0>() >> proc1.in(),
@@ -198,9 +198,9 @@ TEST_CASE("OrderedGraph test") {
     Proc1 pend("end");
     Proc2 pmiddle("middle");
 
-    ugraph::RoutingVertex<30, Proc1, 0, 1, int> start(pstart);
-    ugraph::RoutingVertex<40, Proc2, 1, 1, int> middle(pmiddle);
-    ugraph::RoutingVertex<50, Proc1, 1, 0, int> end(pend);
+    ugraph::PipelineVertex<30, Proc1, 0, 1, int> start(pstart);
+    ugraph::PipelineVertex<40, Proc2, 1, 1, int> middle(pmiddle);
+    ugraph::PipelineVertex<50, Proc1, 1, 0, int> end(pend);
 
     auto ordered_graph = ugraph::PipelineGraph(
         middle.out() >> end.in(),
@@ -342,16 +342,16 @@ struct AudioModules {
 struct AudioPipeline {
     AudioModules modules;
 
-    ugraph::RoutingVertex<100, Source, 0, 1, AudioBuffer> vsrc1;
-    ugraph::RoutingVertex<101, Source, 0, 1, AudioBuffer> vsrc2;
-    ugraph::RoutingVertex<102, Source, 0, 1, AudioBuffer> vsrc3;
+    ugraph::PipelineVertex<100, Source, 0, 1, AudioBuffer> vsrc1;
+    ugraph::PipelineVertex<101, Source, 0, 1, AudioBuffer> vsrc2;
+    ugraph::PipelineVertex<102, Source, 0, 1, AudioBuffer> vsrc3;
 
-    ugraph::RoutingVertex<110, Gain, 1, 1, AudioBuffer> vgain1;
-    ugraph::RoutingVertex<111, Gain, 1, 1, AudioBuffer> vgain2;
-    ugraph::RoutingVertex<112, Gain, 1, 1, AudioBuffer> vgain3;
+    ugraph::PipelineVertex<110, Gain, 1, 1, AudioBuffer> vgain1;
+    ugraph::PipelineVertex<111, Gain, 1, 1, AudioBuffer> vgain2;
+    ugraph::PipelineVertex<112, Gain, 1, 1, AudioBuffer> vgain3;
 
-    ugraph::RoutingVertex<120, Mixer3to1, 3, 1, AudioBuffer> vmix;
-    ugraph::RoutingVertex<130, Sink, 1, 0, AudioBuffer> vsink;
+    ugraph::PipelineVertex<120, Mixer3to1, 3, 1, AudioBuffer> vmix;
+    ugraph::PipelineVertex<130, Sink, 1, 0, AudioBuffer> vsink;
 
     AudioPipeline()
         : vsrc1(modules.s1)

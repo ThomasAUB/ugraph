@@ -1,7 +1,7 @@
 #pragma once
 
 #include "topology.hpp"
-#include "vertex.hpp"
+#include "pipeline_vertex.hpp"
 #include <array>
 #include <tuple>
 #include <initializer_list>

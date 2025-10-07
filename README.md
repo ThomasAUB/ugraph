@@ -55,16 +55,16 @@ AppTopo::apply(
 Result: `Config::init()` → `Logger::init()` → `Database::init()` → `HttpServer::init()` (order may collapse parallel-ready nodes but always respects dependencies). This mode provides order, cycle detection, and type visitation.
 
 ## 3. Define Vertices (for routing)
-Use `RoutingVertex<id, Impl, inputs, outputs, Data>` for anything that will be routed (it still participates in pure topology via its type).
+Use `PipelineVertex<id, Impl, inputs, outputs, Data>` for anything that will be routed (it still participates in pure topology via its type).
 ```cpp
 struct A { void run() { /*...*/ } };  // 0 in, 1 out
 struct B { void run() { /*...*/ } };  // 1 in, 1 out
 struct C { void run() { /*...*/ } };  // 1 in, 0 out
 
 A a; B b; C c;
-ugraph::RoutingVertex<1, A, 0, 1, int> vA(a);
-ugraph::RoutingVertex<2, B, 1, 1, int> vB(b);
-ugraph::RoutingVertex<3, C, 1, 0, int> vC(c);
+ugraph::PipelineVertex<1, A, 0, 1, int> vA(a);
+ugraph::PipelineVertex<2, B, 1, 1, int> vB(b);
+ugraph::PipelineVertex<3, C, 1, 0, int> vC(c);
 ```
 
 ## 4. Pipeline Graph (execution + buffers)
@@ -91,7 +91,7 @@ std::size_t idx = g.buffer_index(1,0);
 ## 6. Cycle Detection
 Any cycle in the provided edge types triggers a static_assert in `Topology` (and thus in `PipelineGraph`).
 
-## 7. Pure Topology (with ports defined via RoutingVertex)
+## 7. Pure Topology (with ports defined via PipelineVertex)
 ```cpp
 using T = ugraph::Topology<decltype(vA.out() >> vB.in()), decltype(vB.out() >> vC.in())>;
 static_assert(!T::is_cyclic());
