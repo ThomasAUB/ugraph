@@ -314,6 +314,10 @@ TEST_CASE("audio pipeline manual equivalence and overhead") {
         // Very lenient upper bound; engine may include buffer routing + bookkeeping.
         CHECK(ratio < 50.0);
         INFO("manual_ns=" << manual_ns << ", pipeline_ns=" << pipeline_ns << ", ratio=" << ratio);
+
+        // debug print
+        std::cout << "manual_ns=" << manual_ns << ", pipeline_ns=" << pipeline_ns << ", ratio=" << ratio << std::endl;
+
     }
     else {
         INFO("manual path time too small to measure, pipeline_ns=" << pipeline_ns);
