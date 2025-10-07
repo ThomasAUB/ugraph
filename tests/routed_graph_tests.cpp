@@ -41,7 +41,7 @@ TEST_CASE("runtime validation") {
 
     g.apply(
         [&] (auto&... impls) {
-            (order.push_back(impls.name[0]), ...);
+            (order.push_back(impls.get_user_type().name[0]), ...);
         }
     );
 
@@ -76,7 +76,7 @@ TEST_CASE("basic topological sort test") {
 
     g.apply(
         [&] (auto&... impls) {
-            (order.emplace_back(impls.mName), ...);
+            (order.emplace_back(impls.get_user_type().mName), ...);
         }
     );
 
@@ -128,7 +128,7 @@ TEST_CASE("topological sort verification") {
 
     g.apply(
         [&] (auto&... impls) {
-            (order.emplace_back(impls.mName), ...);
+            (order.emplace_back(impls.get_user_type().mName), ...);
         }
     );
 
@@ -166,7 +166,7 @@ TEST_CASE("complex topological sort test") {
     order.reserve(decltype(g)::size());
     g.apply(
         [&] (auto&... impls) {
-            (order.emplace_back(impls.mName), ...);
+            (order.emplace_back(impls.get_user_type().mName), ...);
         }
     );
 
@@ -214,7 +214,7 @@ TEST_CASE("OrderedGraph test") {
 
     ordered_graph.apply(
         [&] (auto&... impls) {
-            (order.emplace_back(impls.mName), ...);
+            (order.emplace_back(impls.get_user_type().mName), ...);
         }
     );
 

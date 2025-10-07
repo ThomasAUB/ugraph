@@ -282,10 +282,11 @@ namespace ugraph {
         }
 
         template<typename F>
-        void apply(F&& f) const { std::apply([&] (auto*... vp) { f(vp->get_user_type()...); }, mVertices); }
+        void apply(F&& f) const { std::apply([&] (auto*... vp) { f(*vp...); }, mVertices); }
 
         template<typename F>
         void for_each(F&& f) { std::apply([&] (auto*... vp) { (f(*vp), ...); }, mVertices); }
+
         template<typename F>
         void for_each(F&& f) const { std::apply([&] (auto const*... vp) { (f(*vp), ...); }, mVertices); }
 

@@ -2,3 +2,5 @@
 #include "ugraph/pipeline_vertex.hpp"
 #include "ugraph/topology.hpp"
 #include "ugraph/pipeline.hpp"
+#include "ugraph/light_pipeline_vertex.hpp"
+#include "ugraph/light_pipeline.hpp"
