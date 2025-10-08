@@ -104,17 +104,17 @@ namespace ugraph {
             std::array<std::size_t, producer_count == 0 ? 1 : producer_count> start {}, end {};
         };
 
+        template<std::size_t... I>
+        static constexpr void init_lifetimes_indices(lifetimes_t& l, std::index_sequence<I...>) {
+            ((l.start[I] = id_to_pos(detail::type_list_at<I, producer_list>::type::vid), l.end[I] = l.start[I]), ...);
+        }
+
         static constexpr lifetimes_t build_lifetimes() {
 
             lifetimes_t lt {};
 
             if constexpr (producer_count > 0) {
-
-                [] <std::size_t... I>(lifetimes_t & l, std::index_sequence<I...>) {
-                    ((l.start[I] = id_to_pos(detail::type_list_at<I, producer_list>::type::vid), l.end[I] = l.start[I]), ...);
-                }
-
-                (lt, std::make_index_sequence<producer_count>{});
+                init_lifetimes_indices(lt, std::make_index_sequence<producer_count>{});
 
                 ([&] () {
                     using ET = edge_traits<edges_t>;
