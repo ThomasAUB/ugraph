@@ -1,143 +1,175 @@
 # uGraph
 
-Tiny C++17 header‑only utilities for DAGs with a clean split between pure type‑level topology and optional runtime routing / buffer reuse.
+Header‑only C++17 utilities for *static* DAGs:
 
-Include once:
+* `Topology` – compile‑time ordering & cycle detection (no storage, no allocs)
+* `GraphView` – runtime traversal + minimal reusable buffer slot mapping
+
+Single include:
 ```cpp
 #include <ugraph.hpp>
 ```
 
-## 1. Concepts
+---
 
-- Topology: compile‑time only. Given edge types it computes (constexpr) topological order, detects cycles, and lets you visit vertex types. No runtime storage.
+## Topology
 
-- PipelineGraph : builds on Topology; wires concrete vertex instances, assigns and reuses data buffers (interval coloring), and offers runtime traversal & buffer introspection.
+Provide edge *types*; at compile time `Topology` tells you:
+* Cycle present? (`is_cyclic()`)
+* A deterministic ordering (`ids()`)
+* Node count (`size()`)
+* Tagged visitation (`for_each`, `apply`)
 
-## 2. Pure Topology First (Vertex + Edge)
-Model a DAG purely at the type level—no instances, no buffers—useful for:
-* Enforcing build / init order among stateless components
-* Generating registration code or static tables in a guaranteed order
-* Early cycle detection before adding routing concerns
+### NodeTag
 
-Real‑life style example: ordered subsystem initialization for an application.
+Pure type descriptor: `NodeTag<ID, Payload>` = stable integer id + payload type. No runtime object needed.
+
+### Edges
+
+`Link<Src, Dst>` encodes dependency (Src before Dst). Collect links in the `Topology` parameter pack.
+
+### Example
+
+Compile‑time enforced startup order:
+
 ```cpp
-// Subsystem tags (each supplies a static init)
-struct Config    { static void init() {/* load config file */} };
-struct Logger    { static void init() {/* requires Config */} };
-struct Database  { static void init() {/* requires Config + logs */} };
-struct HttpServer{ static void init() {/* requires Database */} };
+// Subsystems
+struct Config    { static void init() {/* load config */} };
+struct Logger    { static void init() {/* needs Config */} };
+struct Database  { static void init() {/* needs Config + Logger */} };
+struct HttpServer{ static void init() {/* needs Database */} };
 
-// Assign stable ids (any positive unique numbers)
-using VCfg  = ugraph::Vertex<1, Config>;
-using VLog  = ugraph::Vertex<2, Logger>;
-using VDb   = ugraph::Vertex<3, Database>;
-using VSrv  = ugraph::Vertex<4, HttpServer>;
+// Ids
+using config_t = ugraph::NodeTag<1, Config>;
+using server_t = ugraph::NodeTag<2, HttpServer>;
+using database_t = ugraph::NodeTag<3, Database>;
+using logger_t = ugraph::NodeTag<4, Logger>;
 
-// Declare dependencies (edges go source -> destination)
-using AppTopo = ugraph::Topology<
-    ugraph::Edge<VCfg, VLog>,     // Config before Logger
-    ugraph::Edge<VCfg, VDb>,      // Config before Database
-    ugraph::Edge<VLog, VDb>,      // Logger before Database (for logging during init)
-    ugraph::Edge<VDb,  VSrv>      // Database before Server
+// Dependencies (Src -> Dst)
+using AppTopo = 
+ugraph::Topology<
+    ugraph::Link<config_t, logger_t>,   // config must start before logger
+    ugraph::Link<config_t, database_t>, // config must start before DB
+    ugraph::Link<logger_t, database_t>, // logger must start before DB
+    ugraph::Link<database_t, server_t>  // DB must start before server
 >;
 
 static_assert(!AppTopo::is_cyclic());
-constexpr auto order = AppTopo::ids(); // e.g. {1,2,3,4}
+constexpr auto order = AppTopo::ids(); // e.g. {1,4,3,2}
 static_assert(AppTopo::size() == 4);
 
-// Run all subsystem inits in a guaranteed safe order
+// Run in guaranteed safe order (e.g. config -> logger -> DB -> server)
 AppTopo::apply(
-    [] (auto... tag) {
-        (decltype(tag)::type::init(), ...); // Config::init(), Logger::init(), ...
+    [](auto... tag){ 
+        (decltype(tag)::module_type::init(), ...);
     }
 );
 ```
-Result: `Config::init()` → `Logger::init()` → `Database::init()` → `HttpServer::init()` (order may collapse parallel-ready nodes but always respects dependencies). This mode provides order, cycle detection, and type visitation.
 
-## 3. Define Vertices (for routing)
-Use `PipelineVertex<id, Impl, inputs, outputs, Data>` for anything that will be routed (it still participates in pure topology via its type).
+### Topology API
+
 ```cpp
-struct A { void run() { /*...*/ } };  // 0 in, 1 out
-struct B { void run() { /*...*/ } };  // 1 in, 1 out
-struct C { void run() { /*...*/ } };  // 1 in, 0 out
-
-A a; B b; C c;
-ugraph::PipelineVertex<1, A, 0, 1, int> vA(a);
-ugraph::PipelineVertex<2, B, 1, 1, int> vB(b);
-ugraph::PipelineVertex<3, C, 1, 0, int> vC(c);
-```
-
-## 4. Pipeline Graph (execution + buffers)
-```cpp
-auto g = ugraph::PipelineGraph(
-    vA.out() >> vB.in(),
-    vB.out() >> vC.in()
-);
-
-g.apply([](auto&... impl){ (impl.run(), ...); }); // runs A,B,C in order
-static_assert(decltype(g)::buffer_count() == 2);
-```
-
-## 5. Buffer Reuse Introspection
-Compile‑time:
-```cpp
-constexpr std::size_t buf = decltype(g)::buffer_index_for<1,0>();
-```
-Runtime:
-```cpp
-std::size_t idx = g.buffer_index(1,0);
-```
-
-## 6. Cycle Detection
-Any cycle in the provided edge types triggers a static_assert in `Topology` (and thus in `PipelineGraph`).
-
-## 7. Pure Topology (with ports defined via PipelineVertex)
-```cpp
-using T = ugraph::Topology<decltype(vA.out() >> vB.in()), decltype(vB.out() >> vC.in())>;
+using T = ugraph::Topology</* Links... */>;
 static_assert(!T::is_cyclic());
-constexpr auto order = T::ids();      // vertex ids in topological order
-static_assert(T::size() == 3);
-// Visit vertex types
-T::for_each([](auto tag){ using V = typename decltype(tag)::type; (void)sizeof(V); });
-
-// Or gather all vertex tags in one call (variadic) if you need pack processing:
-auto all_ids = T::apply([](auto... tags) {
-    return std::array<std::size_t, sizeof...(tags)>{ decltype(tags)::id()... };
-});
+constexpr auto ids = T::ids();      // std::array<...>
+T::for_each([](auto tag){ /* per tag */ });
+auto result = T::apply([](auto... tags){ return sizeof...(tags); });
 ```
 
 ---
-Minimal, fast, and explicit: pick `Topology` when you only need order & reflection; pick `PipelineGraph` when you also need wiring + buffer reuse.
 
-## 8. API Reference (Topology visitation)
+## GraphView
 
-There are two complementary compile-time visitation primitives on `Topology`:
+Use `GraphView` when you have concrete module instances to execute. Feed it edge *values* produced by wiring `Node` objects. It:
+* Reuses `Topology` (ordering + cycle check)
+* Offers `apply` (variadic) & `for_each` (per node)
+* Computes minimal output buffer slot reuse via lifetime coloring
 
-1. for_each(F&& f)
-    Invokes `f(tag)` once per vertex in topological order. The tag is the `Vertex<id, UserType>` wrapper type (default constructed) so you can retrieve:
-    - `decltype(tag)::id()` – the stable id
-    - `typename decltype(tag)::type` – the user payload type (e.g. Config)
+### Defining Runtime Nodes
 
-    Example:
-    ```cpp
-    AppTopo::for_each([](auto tag){ using S = typename decltype(tag)::type; S::init(); });
-    ```
+```cpp
+struct Source  { void run() {/* produce */} };        // 0 in, 1 out
+struct Filter  { void run() {/* transform */} };      // 1 in, 1 out
+struct Sink    { void run() {/* consume */} };        // 1 in, 0 out
 
-2. apply(F&& f)
-    Invokes `f` exactly once with every vertex tag as a separate parameter in topological order. Useful for building constexpr arrays, forwarding packs, or generating aggregate structures without intermediate storage.
+Source src;
+Filter filt;
+Sink sink;
 
-    Example:
-    ```cpp
-    constexpr auto ids = AppTopo::apply([](auto... tags){
-         return std::array<std::size_t, sizeof...(tags)>{ decltype(tags)::id()... };
-    });
-    static_assert(ids[0] == 1);
-    ```
+ugraph::Node<10, Source, 0,1> nSrc(src);
+ugraph::Node<20, Filter, 1,1> nFlt(filt);
+ugraph::Node<30, Sink,   1,0> nSnk(sink);
 
-        `apply` also accepts a lambda that returns `void`; in that case nothing is returned (unlike `for_each`, it still passes all tags in a single invocation). Example:
-        ```cpp
-        AppTopo::apply([](auto... tags){ (void)std::initializer_list<int>{ ( (void)decltype(tags)::id(), 0)... }; });
-        ```
+auto e1 = nSrc.out() >> nFlt.in();
+auto e2 = nFlt.out() >> nSnk.in();
 
-Choose `for_each` for simple independent actions per vertex; choose `apply` when you need the whole pack simultaneously.
+auto gv = ugraph::GraphView(e1, e2); // static_assert inside ensures acyclic
+```
 
+### Executing the Pipeline
+
+```cpp
+gv.apply([](auto&... nodes){ (nodes.module().run(), ...); });
+// or
+gv.for_each([](auto& node){ node.module().run(); });
+```
+
+### GraphView API
+
+```cpp
+auto ids = decltype(gv)::ids();                 // ordering
+constexpr auto N = decltype(gv)::size();
+constexpr auto slots = decltype(gv)::data_instance_count();
+gv.for_each([](auto& node){ /* node.id(), node.module() */ });
+```
+
+---
+
+## Core Concepts
+
+| Concept | Type | Purpose |
+|---------|------|---------|
+| Compile-time id | `NodeTag<ID, Module>` | Id + payload type only |
+| Runtime node | `Node<ID, Module, In, Out>` | Wraps user instance + ports |
+| Edge | `Link<Src, Dst>` | Src precedes Dst |
+| Static graph | `Topology<Link...>` | Order, cycle check, visitation |
+| Runtime view | `GraphView<Link...>` | Traverse + buffer slots |
+
+---
+
+## Detailed API Reference
+
+### Topology<Link...>
+* `is_cyclic()`
+* `ids()` -> `std::array<...>`
+* `size()`
+* `find_type_by_id<Id>::type`
+* `for_each(f)` per tag
+* `apply(f)` all tags
+
+### GraphView<Link...>
+* `ids()`
+* `size()`
+* `data_instance_count()`
+* `output_data_index<VID,PORT>()`
+* `input_data_index<VID,PORT>()`
+* `apply(f)` runtime variadic
+* `for_each(f)` runtime per node
+
+### Node<ID, Module, InCount, OutCount>
+* `id()`
+* `in<port>()`, `out<port>()`
+* `module()`
+* `input_count()`, `output_count()`
+
+---
+
+## Use Cases
+
+* Subsystem / service init ordering
+* Static registration or table generation
+* Fixed pipelines (audio, image, robotics, ETL)
+* Buffer reuse (slot coloring)
+* Compile‑time reflection (dispatch tables, switches)
+
+---
