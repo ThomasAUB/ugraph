@@ -1,6 +1,6 @@
-#include "ugraph/vertex.hpp"
-#include "ugraph/pipeline_vertex.hpp"
+#pragma once
+
+#include "ugraph/node_tag.hpp"
 #include "ugraph/topology.hpp"
-#include "ugraph/pipeline.hpp"
-#include "ugraph/light_pipeline_vertex.hpp"
-#include "ugraph/light_pipeline.hpp"
+#include "ugraph/node.hpp"
+#include "ugraph/graph_view.hpp"
