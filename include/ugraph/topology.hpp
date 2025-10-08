@@ -6,6 +6,7 @@
 #include <utility>
 #include <type_traits>
 #include "node_tag.hpp"
+#include "type_list.hpp"
 
 namespace ugraph {
 
@@ -21,13 +22,12 @@ namespace ugraph {
             static constexpr std::size_t dst_id = dst_vertex_t::id();
         };
 
-        // Lightweight internal typelist & helpers (not part of public API)
-        template<typename... Ts> struct type_list {};
+        // Lightweight internal typelist & helpers (moved to meta.hpp for reuse)
         template<typename List, typename V> struct list_append_unique;
         template<typename V, typename... Ts>
-        struct list_append_unique<type_list<Ts...>, V> {
+        struct list_append_unique<detail::type_list<Ts...>, V> {
             static constexpr bool exists = ((V::id() == Ts::id()) || ... || false);
-            using type = std::conditional_t<exists, type_list<Ts...>, type_list<Ts..., V>>;
+            using type = std::conditional_t<exists, detail::type_list<Ts...>, detail::type_list<Ts..., V>>;
         };
         template<typename List, typename Edge>
         struct list_add_edge_vertices {
@@ -38,22 +38,14 @@ namespace ugraph {
         template<typename List> struct fold_edges<List> { using type = List; };
         template<typename List, typename E, typename... R>
         struct fold_edges<List, E, R...> { using type = typename fold_edges<typename list_add_edge_vertices<List, E>::type, R...>::type; };
-        using vertex_types_list = typename fold_edges<type_list<>, edges_t...>::type;
+        using vertex_types_list = typename fold_edges<detail::type_list<>, edges_t...>::type;
 
-        // Indexing utilities
-        template<std::size_t N, typename List> struct type_list_at;
-        template<std::size_t N, typename T, typename... Ts>
-        struct type_list_at<N, type_list<T, Ts...>> : type_list_at<N - 1, type_list<Ts...>> {};
-        template<typename T, typename... Ts>
-        struct type_list_at<0, type_list<T, Ts...>> { using type = T; };
-        template<typename List> struct type_list_size;
-        template<typename... Ts> struct type_list_size<type_list<Ts...>> : std::integral_constant<std::size_t, sizeof...(Ts)> {};
-        static constexpr std::size_t vertex_count = type_list_size<vertex_types_list>::value;
+        static constexpr std::size_t vertex_count = detail::type_list_size<vertex_types_list>::value;
 
         // Collect vertex ids in declared topological order (before sorting)
         template<std::size_t... I>
         static constexpr auto make_vertex_ids(std::index_sequence<I...>) {
-            return std::array<std::size_t, sizeof...(I)>{ type_list_at<I, vertex_types_list>::type::id()... };
+            return std::array<std::size_t, sizeof...(I)>{ detail::type_list_at<I, vertex_types_list>::type::id()... };
         }
         static constexpr auto vertex_ids = make_vertex_ids(std::make_index_sequence<vertex_count>{});
 
@@ -159,7 +151,7 @@ namespace ugraph {
         template<std::size_t Id>
         struct find_type_by_id {
             template<std::size_t... I>
-            static auto helper(std::index_sequence<I...>) -> typename find_impl<Id, typename type_list_at<I, vertex_types_list>::type...>::type;
+            static auto helper(std::index_sequence<I...>) -> typename find_impl<Id, typename detail::type_list_at<I, vertex_types_list>::type...>::type;
             using type = decltype(helper(std::make_index_sequence<vertex_count>{}));
             static_assert(!std::is_void_v<type>, "Vertex id not found");
         };

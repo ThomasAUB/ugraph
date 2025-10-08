@@ -7,6 +7,7 @@
 
 #include "topology.hpp"
 #include "node.hpp"
+#include "type_list.hpp"
 
 namespace ugraph {
 
@@ -67,12 +68,11 @@ namespace ugraph {
 
         template<std::size_t _vid, std::size_t _port>
         struct producer_tag { static constexpr std::size_t vid = _vid; static constexpr std::size_t port = _port; };
-        template<typename... Ts> struct type_list {};
         template<typename List, typename Tag> struct append_unique;
         template<typename Tag, typename... Ts>
-        struct append_unique<type_list<Ts...>, Tag> {
+        struct append_unique<detail::type_list<Ts...>, Tag> {
             static constexpr bool exists = ((Tag::vid == Ts::vid && Tag::port == Ts::port) || ... || false);
-            using type = std::conditional_t<exists, type_list<Ts...>, type_list<Ts..., Tag>>;
+            using type = std::conditional_t<exists, detail::type_list<Ts...>, detail::type_list<Ts..., Tag>>;
         };
         template<typename List, typename Edge> struct add_edge_prod {
             using tag = producer_tag<edge_traits<Edge>::src_id, edge_traits<Edge>::src_port_index>;
@@ -82,11 +82,9 @@ namespace ugraph {
         template<typename List> struct fold_prod<List> { using type = List; };
         template<typename List, typename E, typename... R>
         struct fold_prod<List, E, R...> { using type = typename fold_prod<typename add_edge_prod<List, E>::type, R...>::type; };
-        using producer_list = typename fold_prod<type_list<>, edges_t...>::type;
+        using producer_list = typename fold_prod<detail::type_list<>, edges_t...>::type;
 
-        template<typename List> struct list_size;
-        template<typename... Ts> struct list_size<type_list<Ts...>> : std::integral_constant<std::size_t, sizeof...(Ts)> {};
-        static constexpr std::size_t producer_count = list_size<producer_list>::value;
+        static constexpr std::size_t producer_count = detail::type_list_size<producer_list>::value;
 
         static constexpr std::size_t id_to_pos(std::size_t id) {
             auto ids = topology_t::ids();
@@ -94,15 +92,9 @@ namespace ugraph {
             return (std::size_t) -1;
         }
 
-        template<std::size_t N, typename List> struct type_list_at;
-        template<std::size_t N, typename T, typename... Ts>
-        struct type_list_at<N, type_list<T, Ts...>> : type_list_at<N - 1, type_list<Ts...>> {};
-        template<typename T, typename... Ts>
-        struct type_list_at<0, type_list<T, Ts...>> { using type = T; };
-
         template<std::size_t VID, std::size_t PORT, std::size_t I>
         struct find_prod_index_impl {
-            using PT = typename type_list_at<I, producer_list>::type;
+            using PT = typename detail::type_list_at<I, producer_list>::type;
             static constexpr std::size_t value = (PT::vid == VID && PT::port == PORT) ? I : find_prod_index_impl<VID, PORT, I + 1>::value;
         };
         template<std::size_t VID, std::size_t PORT>
@@ -119,7 +111,7 @@ namespace ugraph {
             if constexpr (producer_count > 0) {
 
                 [] <std::size_t... I>(lifetimes_t & l, std::index_sequence<I...>) {
-                    ((l.start[I] = id_to_pos(type_list_at<I, producer_list>::type::vid), l.end[I] = l.start[I]), ...);
+                    ((l.start[I] = id_to_pos(detail::type_list_at<I, producer_list>::type::vid), l.end[I] = l.start[I]), ...);
                 }
 
                 (lt, std::make_index_sequence<producer_count>{});

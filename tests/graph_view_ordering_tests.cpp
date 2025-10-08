@@ -51,11 +51,11 @@ TEST_CASE("graph_view fork-join ordering") {
     ugraph::Node<205, LStageC, 1, 0> vSink(sink);
 
     auto g = ugraph::GraphView(
+        vMerge.out() >> vSink.in(),
+        vB2.out() >> vMerge.in<1>(),
         vSrc.out<0>() >> vB1.in(),
         vSrc.out<1>() >> vB2.in(),
-        vB1.out() >> vMerge.in<0>(),
-        vB2.out() >> vMerge.in<1>(),
-        vMerge.out() >> vSink.in()
+        vB1.out() >> vMerge.in<0>()
     );
 
     std::vector<std::string_view> names;
