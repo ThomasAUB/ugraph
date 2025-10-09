@@ -6,7 +6,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include_directories(${CMAKE_SOURCE_DIR}/include)
+add_library(ugraph INTERFACE)
+target_include_directories(ugraph INTERFACE ${CMAKE_SOURCE_DIR}/include)
+target_compile_features(ugraph INTERFACE cxx_std_17)
+
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
