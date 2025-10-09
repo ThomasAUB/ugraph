@@ -31,7 +31,7 @@ namespace ugraph {
 
         template<std::size_t... I>
         static auto make_vertices_tuple_t(std::index_sequence<I...>) ->
-            std::tuple<typename topology_t::template find_type_by_id<topology_t::ids()[I]>::type*...>;
+            std::tuple<typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type*...>;
         using vertices_tuple_t = decltype(make_vertices_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
         template<std::size_t Id, typename Edge>
@@ -60,8 +60,7 @@ namespace ugraph {
 
         template<std::size_t... I>
         static vertices_tuple_t build(std::index_sequence<I...>, const edges_t&... es) {
-            constexpr auto ordered = topology_t::ids();
-            return { get_vertex_ptr<ordered[I]>(es...)... };
+            return { get_vertex_ptr<topology_t::template id_at<I>()>(es...)... };
         }
 
         vertices_tuple_t mVertices;

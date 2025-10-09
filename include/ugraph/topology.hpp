@@ -147,6 +147,12 @@ namespace ugraph {
         static constexpr auto ids() { return topo.order; }
         static constexpr std::size_t size() { return vertex_count; }
 
+        template<std::size_t I>
+        static constexpr std::size_t id_at() {
+            static_assert(I < vertex_count, "Topology::id_at index out of range");
+            return topo.order[I];
+        }
+
         // Query vertex type by id at compile-time: Topology::find_type_by_id<VID>::type
         template<std::size_t Id>
         struct find_type_by_id {
