@@ -1,9 +1,12 @@
+![build status](https://github.com/ThomasAUB/ugraph/actions/workflows/build.yml/badge.svg)
+[![License](https://img.shields.io/github/license/ThomasAUB/ugraph)](LICENSE)
+
 # uGraph
 
-Header‑only C++17 utilities for *static* DAGs:
+Header‑only C++17 utilities for *static* direct acyclic graphs:
 
-* `Topology` – compile‑time ordering & cycle detection (no storage, no allocs)
-* `GraphView` – runtime traversal + minimal reusable buffer slot mapping
+* `Topology` – compile‑time topological ordering & cycle detection (no storage, no allocations)
+* `GraphView` – runtime traversal + minimal reusable buffer slot assignment
 
 Single include:
 ```cpp
@@ -14,64 +17,75 @@ Single include:
 
 ## Topology
 
-Provide edge *types*; at compile time `Topology` tells you:
-* Cycle present? (`is_cyclic()`)
-* A deterministic ordering (`ids()`)
-* Node count (`size()`)
-* Tagged visitation (`for_each`, `apply`)
+Provides compile‑time:
+* Topological sorting
+* Cycle detection
+* Ordered visitation
 
 ### NodeTag
 
-Pure type descriptor: `NodeTag<ID, Payload>` = stable integer id + payload type. No runtime object needed.
+Pure type descriptor:
 
-### Edges
+```cpp
+NodeTag<ID, Payload>
+```
 
-`Link<Src, Dst>` encodes dependency (Src before Dst). Collect links in the `Topology` parameter pack.
+Encodes a stable integer ID plus a payload (module) type—no runtime object required.
+
+### Link
+
+```cpp
+Link<Src, Dst>
+```
+
+Declares a dependency: `Src` must come before `Dst`. Collect links as template parameters of `Topology`.
 
 ### Example
 
-Compile‑time enforced startup order:
+Enforcing subsystem startup order at compile time:
 
 ```cpp
 // Subsystems
-struct Config    { static void init() {/* load config */} };
-struct Logger    { static void init() {/* needs Config */} };
-struct Database  { static void init() {/* needs Config + Logger */} };
-struct HttpServer{ static void init() {/* needs Database */} };
+struct Config    { static void init() { /* load config */ } };
+struct Logger    { static void init() { /* needs Config */ } };
+struct Database  { static void init() { /* needs Config + Logger */ } };
+struct HttpServer{ static void init() { /* needs Database */ } };
 
-// Ids
-using config_t = ugraph::NodeTag<1, Config>;
-using server_t = ugraph::NodeTag<2, HttpServer>;
+// IDs
+using config_t   = ugraph::NodeTag<1, Config>;
+using server_t   = ugraph::NodeTag<2, HttpServer>;
 using database_t = ugraph::NodeTag<3, Database>;
-using logger_t = ugraph::NodeTag<4, Logger>;
+using logger_t   = ugraph::NodeTag<4, Logger>;
 
 // Dependencies (Src -> Dst)
-using AppTopo = 
+using AppTopo =
 ugraph::Topology<
-    ugraph::Link<config_t, logger_t>,   // config must start before logger
-    ugraph::Link<config_t, database_t>, // config must start before DB
-    ugraph::Link<logger_t, database_t>, // logger must start before DB
-    ugraph::Link<database_t, server_t>  // DB must start before server
+    ugraph::Link<config_t,   logger_t>,   // Config before Logger
+    ugraph::Link<config_t,   database_t>, // Config before Database
+    ugraph::Link<logger_t,   database_t>, // Logger before Database
+    ugraph::Link<database_t, server_t>    // Database before Server
 >;
 
 static_assert(!AppTopo::is_cyclic());
 constexpr auto order = AppTopo::ids(); // e.g. {1,4,3,2}
 static_assert(AppTopo::size() == 4);
 
-// Run in guaranteed safe order (e.g. config -> logger -> DB -> server)
-AppTopo::apply(
-    [](auto... tag){ 
-        (decltype(tag)::module_type::init(), ...);
-    }
-);
+// Execute in safe order
+AppTopo::apply([](auto... tag){
+    (decltype(tag)::module_type::init(), ...);
+});
 ```
 
-### Topology API
+### Topology API Summary
 
 ```cpp
 using T = ugraph::Topology</* Links... */>;
-static_assert(!T::is_cyclic());
-constexpr auto ids = T::ids();      // std::array<...>
+
+static_assert(!T::is_cyclic());          // Detects cycles at compile time
+constexpr auto ids    = T::ids();        // std::array of node IDs in order
+constexpr auto id0    = T::id_at<0>();   // ID at index
+constexpr auto count  = T::size();       // Number of distinct nodes
+
 T::for_each([](auto tag){ /* per tag */ });
 auto result = T::apply([](auto... tags){ return sizeof...(tags); });
 ```
@@ -80,17 +94,17 @@ auto result = T::apply([](auto... tags){ return sizeof...(tags); });
 
 ## GraphView
 
-Use `GraphView` when you have concrete module instances to execute. Feed it edge *values* produced by wiring `Node` objects. It:
-* Reuses `Topology` (ordering + cycle check)
-* Offers `apply` (variadic) & `for_each` (per node)
-* Computes minimal output buffer slot reuse via lifetime coloring
+Builds a *runtime* view of nodes with:
+* Compile‑time cycle detection and ordering (reuses Topology logic)
+* Port-aware dataflow traversal
+* Minimal buffer “slot” reuse via interval coloring (computes the minimum number of data instances needed for the pipeline)
 
 ### Defining Runtime Nodes
 
 ```cpp
-struct Source  { void run() {/* produce */} };        // 0 in, 1 out
-struct Filter  { void run() {/* transform */} };      // 1 in, 1 out
-struct Sink    { void run() {/* consume */} };        // 1 in, 0 out
+struct Source { void run() { /* produce */ } };     // 0 in, 1 out
+struct Filter { void run() { /* transform */ } };   // 1 in, 1 out
+struct Sink   { void run() { /* consume */ } };     // 1 in, 0 out
 
 Source src;
 Filter filt;
@@ -100,10 +114,11 @@ ugraph::Node<10, Source, 0,1> nSrc(src);
 ugraph::Node<20, Filter, 1,1> nFlt(filt);
 ugraph::Node<30, Sink,   1,0> nSnk(sink);
 
-auto e1 = nSrc.out() >> nFlt.in();
-auto e2 = nFlt.out() >> nSnk.in();
-
-auto gv = ugraph::GraphView(e1, e2); // static_assert inside ensures acyclic
+// static_assert inside ensures acyclic
+auto gv = ugraph::GraphView(
+    nSrc.out() >> nFlt.in(),
+    nFlt.out() >> nSnk.in()
+);
 ```
 
 ### Executing the Pipeline
@@ -114,62 +129,51 @@ gv.apply([](auto&... nodes){ (nodes.module().run(), ...); });
 gv.for_each([](auto& node){ node.module().run(); });
 ```
 
-### GraphView API
+### GraphView API Summary
 
 ```cpp
-auto ids = decltype(gv)::ids();                 // ordering
+// ordered node IDs
+auto ids         = decltype(gv)::ids();
+
+// node count
 constexpr auto N = decltype(gv)::size();
+
+gv.for_each([](auto& node){
+    // node.id(), node.module()
+});
+
+gv.apply([](auto& ... nodes){
+    /* batch access */
+});
+
+// minimal buffer instances
 constexpr auto slots = decltype(gv)::data_instance_count();
-gv.for_each([](auto& node){ /* node.id(), node.module() */ });
+
+// data slot produced by source
+constexpr auto out_idx = gv.output_data_index<decltype(nSrc)::id(), 0>();
+
+// data slot consumed by filter
+constexpr auto in_idx  = gv.input_data_index<decltype(nFlt)::id(), 0>();
 ```
 
 ---
 
 ## Core Concepts
 
-| Concept | Type | Purpose |
-|---------|------|---------|
-| Compile-time id | `NodeTag<ID, Module>` | Id + payload type only |
-| Runtime node | `Node<ID, Module, In, Out>` | Wraps user instance + ports |
-| Edge | `Link<Src, Dst>` | Src precedes Dst |
-| Static graph | `Topology<Link...>` | Order, cycle check, visitation |
-| Runtime view | `GraphView<Link...>` | Traverse + buffer slots |
-
----
-
-## Detailed API Reference
-
-### Topology<Link...>
-* `is_cyclic()`
-* `ids()` -> `std::array<...>`
-* `size()`
-* `find_type_by_id<Id>::type`
-* `for_each(f)` per tag
-* `apply(f)` all tags
-
-### GraphView<Link...>
-* `ids()`
-* `size()`
-* `data_instance_count()`
-* `output_data_index<VID,PORT>()`
-* `input_data_index<VID,PORT>()`
-* `apply(f)` runtime variadic
-* `for_each(f)` runtime per node
-
-### Node<ID, Module, InCount, OutCount>
-* `id()`
-* `in<port>()`, `out<port>()`
-* `module()`
-* `input_count()`, `output_count()`
+| Concept        | Type                          | Purpose                                |
+|----------------|-------------------------------|----------------------------------------|
+| Compile-time id| `NodeTag<ID, Module>`         | ID + payload type (no storage)         |
+| Runtime node   | `Node<ID, Module, In, Out>`   | Wraps user instance + port counts      |
+| Edge (link)    | `Link<Src, Dst>`              | Declares ordering dependency           |
+| Static graph   | `Topology<Link...>`           | Ordering, cycle check, visitation      |
+| Runtime view   | `GraphView<Link...>`          | Traversal + minimal buffer slot reuse  |
 
 ---
 
 ## Use Cases
 
-* Subsystem / service init ordering
-* Static registration or table generation
-* Fixed pipelines (audio, image, robotics, ETL)
-* Buffer reuse (slot coloring)
-* Compile‑time reflection (dispatch tables, switches)
-
----
+* Deterministic subsystem / service initialization
+* Static registration or constexpr table generation
+* Fixed processing pipelines (audio, imaging, robotics, ETL)
+* Buffer reuse optimization (slot coloring)
+* Compile‑time reflection / dispatch (switch tables, jump tables)
