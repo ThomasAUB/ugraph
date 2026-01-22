@@ -2,7 +2,6 @@
 #include "ugraph.hpp"
 #include <vector>
 #include <string_view>
-#include <iostream>
 
 // Tests validating basic GraphView ordering, fork-join shape, and for_each/apply equivalence.
 
@@ -70,9 +69,6 @@ TEST_CASE("graph_view fork-join ordering") {
     CHECK(find_pos("b1") < find_pos("m"));
     CHECK(find_pos("b2") < find_pos("m"));
     CHECK(find_pos("m") < find_pos("snk"));
-
-    ugraph::print_graph<decltype(g)>(std::cout);
-    ugraph::print_pipeline<decltype(g)>(std::cout);
 }
 
 TEST_CASE("graph_view for_each vs apply equivalence and mutation") {

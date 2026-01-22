@@ -102,7 +102,4 @@ TEST_CASE("topology tag apply/for_each runtime echo") {
     CHECK(visited[0] == 'A');
     CHECK(visited[1] == 'B');
     CHECK(visited[2] == 'C');
-
-    ugraph::print_graph<G>(std::cout, "tag");
-    ugraph::print_pipeline<G>(std::cout, "tag");
 }
