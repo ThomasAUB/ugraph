@@ -68,6 +68,7 @@ namespace {
         return std::array<std::size_t, sizeof...(vs)>{ decltype(vs)::id()... };
         });
     static_assert(variadic_ids[0] == ids[0] && variadic_ids[1] == ids[1]);
+
 }
 
 //------------------------------------------------------------------------------
@@ -101,4 +102,7 @@ TEST_CASE("topology tag apply/for_each runtime echo") {
     CHECK(visited[0] == 'A');
     CHECK(visited[1] == 'B');
     CHECK(visited[2] == 'C');
+
+    ugraph::print_graph<G>(std::cout, "tag");
+    ugraph::print_pipeline<G>(std::cout, "tag");
 }

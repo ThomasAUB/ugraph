@@ -226,6 +226,8 @@ namespace ugraph {
 
         static constexpr std::size_t size() { return topology_t::size(); }
 
+        static constexpr auto edges() { return topology_t::edges(); }
+
         static constexpr std::size_t data_instance_count() { return assignment.count; }
 
         template<std::size_t VID, std::size_t PORT>

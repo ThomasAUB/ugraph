@@ -146,6 +146,7 @@ namespace ugraph {
         static constexpr bool is_cyclic() { return topo.has_cycle; }
         static constexpr auto ids() { return topo.order; }
         static constexpr std::size_t size() { return vertex_count; }
+        static constexpr auto edges() { return edges_ids; }
 
         template<std::size_t I>
         static constexpr std::size_t id_at() {
