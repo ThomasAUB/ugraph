@@ -30,12 +30,12 @@ namespace ugraph {
         };
 
         template<std::size_t... I>
-        static auto make_vertices_tuple_t(std::index_sequence<I...>) ->
+        static constexpr auto make_vertices_tuple_t(std::index_sequence<I...>) ->
             std::tuple<typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type*...>;
         using vertices_tuple_t = decltype(make_vertices_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
         template<std::size_t Id, typename Edge>
-        static auto try_edge(const Edge& e) {
+        static constexpr auto try_edge(const Edge& e) {
             using S = typename edge_traits<Edge>::src_vertex_t;
             if constexpr (S::id() == Id) {
                 return &e.first.mNode;
@@ -52,14 +52,14 @@ namespace ugraph {
         }
 
         template<std::size_t Id>
-        static auto get_vertex_ptr(const edges_t&... es) {
+        static constexpr auto get_vertex_ptr(const edges_t&... es) {
             typename topology_t::template find_type_by_id<Id>::type* r = nullptr;
             ((r = r ? r : try_edge<Id>(es)), ...);
             return r;
         }
 
         template<std::size_t... I>
-        static vertices_tuple_t build(std::index_sequence<I...>, const edges_t&... es) {
+        static constexpr vertices_tuple_t build(std::index_sequence<I...>, const edges_t&... es) {
             return { get_vertex_ptr<topology_t::template id_at<I>()>(es...)... };
         }
 
@@ -219,7 +219,7 @@ namespace ugraph {
 
     public:
 
-        GraphView(const edges_t&... es) :
+        constexpr GraphView(const edges_t&... es) :
             mVertices(build(std::make_index_sequence<topology_t::size()>{}, es...)) {}
 
         static constexpr auto ids() { return topology_t::ids(); }
@@ -237,10 +237,10 @@ namespace ugraph {
         static constexpr std::size_t input_data_index() { return data_index_for_input<VID, PORT>(); }
 
         template<typename F>
-        void apply(F&& f) const { std::apply([&] (auto*... vp) { f(*vp...); }, mVertices); }
+        constexpr void apply(F&& f) const { std::apply([&] (auto*... vp) { f(*vp...); }, mVertices); }
 
         template<typename F>
-        void for_each(F&& f) const { std::apply([&] (auto*... vp) { (f(*vp), ...); }, mVertices); }
+        constexpr void for_each(F&& f) const { std::apply([&] (auto*... vp) { (f(*vp), ...); }, mVertices); }
 
     };
 
