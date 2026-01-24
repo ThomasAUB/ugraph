@@ -19,43 +19,84 @@ namespace ugraph {
         // then trims common prefixes and namespaces to a bare name.
         template<typename T>
         constexpr std::string_view type_name() {
-#if defined(__clang__)
-            constexpr std::string_view p = __PRETTY_FUNCTION__;
-            constexpr std::string_view key = "type_name() [T = ";
-            const auto start = p.find(key);
-            if (start == p.npos) return p;
-            const auto spos = start + key.size();
-            const auto e = p.find(']', spos);
-            std::string_view s = (e == p.npos) ? p.substr(spos) : p.substr(spos, e - spos);
-#elif defined(__GNUC__)
-            constexpr std::string_view p = __PRETTY_FUNCTION__;
-            constexpr std::string_view key = "with T = ";
-            const auto start = p.find(key);
-            if (start == p.npos) return p;
-            const auto spos = start + key.size();
-            const auto e = p.find(']', spos);
-            std::string_view s = (e == p.npos) ? p.substr(spos) : p.substr(spos, e - spos);
-#elif defined(_MSC_VER)
-            constexpr std::string_view p = __FUNCSIG__;
-            constexpr std::string_view key = "type_name<";
-            const auto start = p.find(key);
             std::string_view s;
-            if (start == p.npos) {
-                s = p;
+#if defined(__clang__)
+            {
+                constexpr std::string_view p = __PRETTY_FUNCTION__;
+                // Find the bracketed template-args section immediately after the function name
+                constexpr std::string_view fn = "type_name()";
+                const auto fnpos = p.find(fn);
+                if (fnpos == p.npos) return p;
+                const auto br_open = p.find('[', fnpos + fn.size());
+                if (br_open == p.npos) return p;
+                const auto br_close = p.find(']', br_open);
+                const auto section = (br_close == p.npos) ? p.substr(br_open + 1) : p.substr(br_open + 1, br_close - br_open - 1);
+                // look for "with T = " or "T = " inside that bracket only
+                constexpr std::string_view keys[] = { "with T = ", "T = " };
+                s = section;
+                for (auto k : keys) {
+                    const auto start = section.find(k);
+                    if (start == section.npos) continue;
+                    const auto spos = start + k.size();
+                    s = (br_close == p.npos) ? section.substr(spos) : section.substr(spos);
+                    // if there are additional characters after the type, trim up to any ',' or ';' (unlikely)
+                    const auto endpos1 = s.find(';');
+                    const auto endpos2 = s.find(',');
+                    std::size_t endpos = s.npos;
+                    if (endpos1 != s.npos) endpos = endpos1;
+                    if (endpos2 != s.npos && (endpos2 < endpos || endpos == s.npos)) endpos = endpos2;
+                    if (endpos != s.npos) s = s.substr(0, endpos);
+                    break;
+                }
             }
-            else {
-                const auto st = start + key.size();
-                const auto e = p.find(">(void)", st);
-                if (e == p.npos) {
-                    const auto e2 = p.find('>', st);
-                    s = (e2 == p.npos) ? p.substr(st) : p.substr(st, e2 - st);
+#elif defined(__GNUC__)
+            {
+                constexpr std::string_view fn = "type_name()";
+                constexpr std::string_view p = __PRETTY_FUNCTION__;
+                const auto fnpos = p.find(fn);
+                if (fnpos == p.npos) return p;
+                const auto br_open = p.find('[', fnpos + fn.size());
+                if (br_open == p.npos) return p;
+                const auto br_close = p.find(']', br_open);
+                const auto section = (br_close == p.npos) ? p.substr(br_open + 1) : p.substr(br_open + 1, br_close - br_open - 1);
+                constexpr std::string_view keys2[] = { "with T = ", "T = " };
+                s = section;
+                for (auto k : keys2) {
+                    const auto start = section.find(k);
+                    if (start == section.npos) continue;
+                    const auto spos = start + k.size();
+                    s = section.substr(spos);
+                    const auto endpos1 = s.find(';');
+                    const auto endpos2 = s.find(',');
+                    std::size_t endpos = s.npos;
+                    if (endpos1 != s.npos) endpos = endpos1;
+                    if (endpos2 != s.npos && (endpos2 < endpos || endpos == s.npos)) endpos = endpos2;
+                    if (endpos != s.npos) s = s.substr(0, endpos);
+                    break;
+                }
+            }
+#elif defined(_MSC_VER) 
+            {
+                constexpr std::string_view p = __FUNCSIG__;
+                constexpr std::string_view key = "type_name<";
+                const auto start = p.find(key);
+                if (start == p.npos) {
+                    s = p;
                 }
                 else {
-                    s = p.substr(st, e - st);
+                    const auto st = start + key.size();
+                    const auto e = p.find(">(void)", st);
+                    if (e == p.npos) {
+                        const auto e2 = p.find('>', st);
+                        s = (e2 == p.npos) ? p.substr(st) : p.substr(st, e2 - st);
+                    }
+                    else {
+                        s = p.substr(st, e - st);
+                    }
                 }
             }
 #else
-            std::string_view s = "unknown";
+            s = "unknown";
 #endif
             // Trim common compiler prefixes (e.g. "struct ", "class ", "enum ")
             constexpr std::string_view keys[] = { "struct ", "class ", "enum " };
@@ -125,7 +166,7 @@ namespace ugraph {
             topo_t::for_each(
                 [&] (auto v) {
                     using vt = decltype(v);
-                    stream << vt::id() << "(" << node_name<vt>() << ")\n";
+                    stream << vt::id() << "(" << node_name<vt>() << " " << vt::id() << ")\n";
                 }
             );
         }
