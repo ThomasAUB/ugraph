@@ -5,9 +5,10 @@
 
 namespace ugraph {
 
-    template<std::size_t _id, typename _module_t>
+    template<std::size_t _id, typename _module_t, std::size_t _priority = 0>
     struct NodeTag {
         static constexpr std::size_t id() { return _id; }
+        static constexpr std::size_t priority() { return _priority; }
         using module_type = _module_t;
         using node_type = NodeTag<_id, _module_t>;
     };

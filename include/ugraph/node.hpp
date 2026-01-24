@@ -10,11 +10,12 @@ namespace ugraph {
         std::size_t _id,
         typename _module_t,
         std::size_t _input_count,
-        std::size_t _output_count
+        std::size_t _output_count,
+        std::size_t _priority = 0
     >
-    struct Node : ugraph::NodeTag<_id, _module_t> {
+    struct Node : ugraph::NodeTag<_id, _module_t, _priority> {
 
-        using base_type = ugraph::NodeTag<_id, _module_t>;
+        using base_type = ugraph::NodeTag<_id, _module_t, _priority>;
         using module_type = _module_t;
 
         template<std::size_t _index>

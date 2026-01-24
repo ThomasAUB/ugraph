@@ -49,6 +49,12 @@ namespace ugraph {
         }
         static constexpr auto vertex_ids = make_vertex_ids(std::make_index_sequence<vertex_count>{});
 
+        template<std::size_t... I>
+        static constexpr auto make_vertex_priorities(std::index_sequence<I...>) {
+            return std::array<std::size_t, sizeof...(I)>{ detail::type_list_at<I, vertex_types_list>::type::priority()... };
+        }
+        static constexpr auto vertex_priorities = make_vertex_priorities(std::make_index_sequence<vertex_count>{});
+
         // Edge list as (src,dst) id pairs for Kahn's algorithm
         static constexpr auto make_edges_ids() {
             return std::array<std::pair<std::size_t, std::size_t>, sizeof...(edges_t)>{
@@ -84,13 +90,19 @@ namespace ugraph {
             std::size_t placed = 0;
             while (placed < vertex_count) {
                 std::size_t pick = vertex_count;
+                std::size_t best_prio = 0;
+                bool found = false;
                 for (std::size_t i = 0; i < vertex_count; ++i) {
                     if (!used[i] && indeg[i] == 0) {
-                        pick = i;
-                        break;
+                        auto pr = vertex_priorities[i];
+                        if (!found || pr > best_prio) {
+                            best_prio = pr;
+                            pick = i;
+                            found = true;
+                        }
                     }
                 }
-                if (pick == vertex_count) { // cycle: return original order for determinism
+                if (!found) { // cycle: return original order for determinism
                     r.has_cycle = true;
                     for (std::size_t i = 0; i < vertex_count; ++i) {
                         r.order[i] = vertex_ids[i];
