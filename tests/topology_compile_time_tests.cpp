@@ -103,3 +103,19 @@ TEST_CASE("topology tag apply/for_each runtime echo") {
     CHECK(visited[1] == 'B');
     CHECK(visited[2] == 'C');
 }
+
+TEST_CASE("node tag ports indices compile-time") {
+    using A = ugraph::NodeTag<10, P1>;
+    using B = ugraph::NodeTag<11, P2>;
+
+    using E1 = ugraph::Link<A::Out<3>, B::In<5>>;
+    using G1 = ugraph::Topology<E1>;
+    static_assert(G1::edge_traits<E1>::src_port_index == 3, "src port index mismatch");
+    static_assert(G1::edge_traits<E1>::dst_port_index == 5, "dst port index mismatch");
+
+    // Ports are optional: when absent, indices default to zero.
+    using E2 = ugraph::Link<A, B>;
+    using G2 = ugraph::Topology<E2>;
+    static_assert(G2::edge_traits<E2>::src_port_index == 0, "default src port index should be 0");
+    static_assert(G2::edge_traits<E2>::dst_port_index == 0, "default dst port index should be 0");
+}
