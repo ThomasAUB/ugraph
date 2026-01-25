@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(ugraph INTERFACE)
-target_include_directories(ugraph INTERFACE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(ugraph INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(ugraph INTERFACE cxx_std_17)
 
 
