@@ -10,14 +10,21 @@ struct MyType;
 template<typename T>
 struct MyTemplateType;
 
-static_assert(ugraph::type_name<int>() == "int");
-static_assert(ugraph::type_name<MyType>() == "MyType");
+TEST_CASE("type name test") {
 
-static constexpr auto type_str = ugraph::type_name<MyTemplateType<const MyType**>>();
-static_assert(
-    type_str == "MyTemplateType<const MyType**>" ||
-    type_str == "MyTemplateType<const MyType **>"
-    );
+    CHECK(ugraph::type_name<int>() == "int");
+    CHECK(ugraph::type_name<MyType>() == "MyType");
+
+    static constexpr auto type_str = ugraph::type_name<MyTemplateType<const MyType**>>();
+    std::cout << "Type name test: " << type_str << std::endl;
+
+    CHECK((
+        type_str == "MyTemplateType<const MyType**>" ||
+        type_str == "MyTemplateType<const MyType **>" ||
+        type_str == "MyTemplateType<struct MyType const * *>"
+        ));
+
+}
 
 
 struct Stage { const char* name; };

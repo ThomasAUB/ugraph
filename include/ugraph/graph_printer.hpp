@@ -79,30 +79,47 @@ namespace ugraph {
             {
                 constexpr std::string_view p = __FUNCSIG__;
                 constexpr std::string_view key = "type_name<";
-                const auto start = p.find(key);
+                const auto start = p.rfind(key);
                 if (start == p.npos) {
                     s = p;
                 }
                 else {
                     const auto st = start + key.size();
-                    const auto e = p.find(">(void)", st);
-                    if (e == p.npos) {
-                        const auto e2 = p.find('>', st);
-                        s = (e2 == p.npos) ? p.substr(st) : p.substr(st, e2 - st);
+                    // Find the matching closing '>' for the template args, handling nested '<...>'
+                    std::size_t endpos = p.npos;
+                    int nested = 0;
+                    for (std::size_t i = st; i < p.size(); ++i) {
+                        const char c = p[i];
+                        if (c == '<') {
+                            ++nested;
+                        }
+                        else if (c == '>') {
+                            if (nested == 0) { endpos = i; break; }
+                            --nested;
+                        }
                     }
-                    else {
-                        s = p.substr(st, e - st);
-                    }
+                    s = (endpos == p.npos) ? p.substr(st) : p.substr(st, endpos - st);
                 }
             }
 #else
             s = "unknown";
 #endif
-            // Trim common compiler prefixes (e.g. "struct ", "class ", "enum ")
+            // Strip leading cv-qualifiers like "const "/"volatile "
+            constexpr std::string_view skip_prefixes[] = { "const ", "volatile " };
             constexpr std::string_view keys[] = { "struct ", "class ", "enum " };
-            for (auto k : keys) {
-                if (s.rfind(k, 0) == 0) { s = s.substr(k.size()); break; }
+            bool changed = true;
+            while (changed) {
+                changed = false;
+                for (auto pfx : skip_prefixes) {
+                    if (s.rfind(pfx, 0) == 0) { s = s.substr(pfx.size()); changed = true; break; }
+                }
+                if (changed) continue;
+                for (auto k : keys) {
+                    if (s.rfind(k, 0) == 0) { s = s.substr(k.size()); changed = true; break; }
+                }
             }
+            // Trim leading spaces
+            while (!s.empty() && s.front() == ' ') s = s.substr(1);
             // Keep only the last qualifier after '::'
             const auto pos = s.rfind("::");
             if (pos != s.npos) return s.substr(pos + 2);
