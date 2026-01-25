@@ -7,6 +7,16 @@
 
 namespace ugraph {
 
+
+
+    template<typename graph_t, typename stream_t>
+    void print_graph(stream_t& stream, const std::string_view& inGraphName = "");
+
+    template<typename graph_t, typename stream_t>
+    void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "");
+
+
+
     namespace {
 
         // Allow showing an alternative display type (strip wrappers like NodeTag)
@@ -190,7 +200,7 @@ namespace ugraph {
     }
 
     template<typename graph_t, typename stream_t>
-    void print_graph(stream_t& stream, const std::string_view& inGraphName = "") {
+    void print_graph(stream_t& stream, const std::string_view& inGraphName) {
 
         constexpr auto edges_ids = graph_t::edges();
         constexpr auto ids = graph_t::ids();
@@ -220,7 +230,7 @@ namespace ugraph {
     }
 
     template<typename graph_t, typename stream_t>
-    void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "") {
+    void print_pipeline(stream_t& stream, const std::string_view& inGraphName) {
 
         constexpr auto edges_ids = graph_t::edges();
         constexpr auto ids = graph_t::ids();

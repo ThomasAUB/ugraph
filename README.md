@@ -27,10 +27,14 @@ Provides compile‑time:
 Pure type descriptor:
 
 ```cpp
-NodeTag<ID, Payload>
+NodeTag<ID, Payload, Priority = 0>
 ```
 
 Encodes a stable integer ID plus a payload (module) type—no runtime object required.
+
+Optional priority parameter:
+
+* `Priority` (default `0`) is a compile-time tie-breaker used by ordering algorithms — larger values run earlier when multiple nodes are otherwise unordered.
 
 ### Link
 
@@ -103,21 +107,30 @@ Builds a *runtime* view of nodes with:
 
 ```cpp
 struct Source { void run() { /* produce */ } };     // 0 in, 1 out
-struct Filter { void run() { /* transform */ } };   // 1 in, 1 out
+struct Merger { void run() { /* transform */ } };   // 2 in, 1 out
 struct Sink   { void run() { /* consume */ } };     // 1 in, 0 out
 
 Source src;
-Filter filt;
+Merger merger;
 Sink sink;
 
+// optional fifth template parameter is priority (default 0)
 ugraph::Node<10, Source, 0,1> nSrc(src);
-ugraph::Node<20, Filter, 1,1> nFlt(filt);
+ugraph::Node<20, Merger, 2,1> nMerger(merger);
 ugraph::Node<30, Sink,   1,0> nSnk(sink);
 
+// Example with explicit priority: higher values are prioritized when tie-breaking
+ugraph::Node<11, Source, 0,1, 5> nSrcHighPrio(src);
+
+
 // static_assert inside ensures acyclic
+// connect both sources to the two inputs of the merger; the
+// higher-priority `nSrcHighPrio` will be scheduled first when
+// ordering needs to break ties.
 auto gv = ugraph::GraphView(
-    nSrc.out() >> nFlt.in(),
-    nFlt.out() >> nSnk.in()
+    nSrcHighPrio.out() >> nMerger.in<0>(),
+    nSrc.out()         >> nMerger.in<1>(),
+    nMerger.out()         >> nSnk.in()
 );
 ```
 
@@ -158,6 +171,34 @@ constexpr auto in_idx  = gv.input_data_index<decltype(nFlt)::id(), 0>();
 
 ---
 
+### Graph printing
+
+Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `GraphView`.
+
+Include the headers via the single-include `ugraph.hpp`, then call:
+
+```cpp
+// prints nodes and configured edges as a mermaid flowchart
+ugraph::print_graph<decltype(g)>(std::cout, "MyGraph");
+
+// prints the pipeline order (topological sequence)
+ugraph::print_pipeline<decltype(g)>(std::cout, "MyPipeline");
+```
+
+The output is wrapped in a fenced mermaid block suitable for embedding in Markdown.
+
+```mermaid
+flowchart LR
+10(Source 10)
+11(Source 11)
+20(Merger 20)
+30(Sink 30)
+10 --> 20
+11 --> 20
+20 --> 30
+```
+
+
 ## Core Concepts
 
 | Concept        | Type                          | Purpose                                |
@@ -175,5 +216,5 @@ constexpr auto in_idx  = gv.input_data_index<decltype(nFlt)::id(), 0>();
 * Deterministic subsystem / service initialization
 * Static registration or constexpr table generation
 * Fixed processing pipelines (audio, imaging, robotics, ETL)
-* Buffer reuse optimization (slot coloring)
+* Buffer reuse optimization (greedy interval coloring)
 * Compile‑time reflection / dispatch (switch tables, jump tables)
