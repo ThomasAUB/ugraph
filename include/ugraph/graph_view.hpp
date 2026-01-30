@@ -244,6 +244,44 @@ namespace ugraph {
             return data_index_for_output<src_vid, src_port>();
         }
 
+        // Number of external input ports: input ports of vertices that are not
+        // connected from any producer inside the graph.
+        template<std::size_t VID, std::size_t... P>
+        static constexpr std::size_t missing_inputs_impl(std::index_sequence<P...>) {
+            return ((find_input_edge<VID, P>::src_vid == (std::size_t) -1 ? 1 : 0) + ... + 0);
+        }
+
+        template<std::size_t VID>
+        static constexpr std::size_t missing_inputs_for_vertex() {
+            using V = typename topology_t::template find_type_by_id<VID>::type;
+            if constexpr (V::input_count() == 0) return 0;
+            else return missing_inputs_impl<VID>(std::make_index_sequence<V::input_count()>{});
+        }
+
+        template<std::size_t... I>
+        static constexpr std::size_t compute_input_count_impl(std::index_sequence<I...>) {
+            return (missing_inputs_for_vertex<topology_t::template id_at<I>()>() + ... + 0);
+        }
+
+        // Number of external output ports: output ports that are not used as
+        // a producer for any internal edge (i.e., not present in producer_list).
+        template<std::size_t VID, std::size_t... P>
+        static constexpr std::size_t missing_outputs_impl(std::index_sequence<P...>) {
+            return ((find_prod_index_impl<VID, P, 0>::value == (std::size_t) -1 ? 1 : 0) + ... + 0);
+        }
+
+        template<std::size_t VID>
+        static constexpr std::size_t missing_outputs_for_vertex() {
+            using V = typename topology_t::template find_type_by_id<VID>::type;
+            if constexpr (V::output_count() == 0) return 0;
+            else return missing_outputs_impl<VID>(std::make_index_sequence<V::output_count()>{});
+        }
+
+        template<std::size_t... I>
+        static constexpr std::size_t compute_output_count_impl(std::index_sequence<I...>) {
+            return (missing_outputs_for_vertex<topology_t::template id_at<I>()>() + ... + 0);
+        }
+
     public:
 
         constexpr GraphView(const edges_t&... es) :
@@ -256,6 +294,14 @@ namespace ugraph {
         static constexpr auto edges() { return topology_t::edges(); }
 
         static constexpr std::size_t data_instance_count() { return assignment.count; }
+
+        static constexpr std::size_t input_count() {
+            return compute_input_count_impl(std::make_index_sequence<topology_t::size()>{});
+        }
+
+        static constexpr std::size_t output_count() {
+            return compute_output_count_impl(std::make_index_sequence<topology_t::size()>{});
+        }
 
         template<std::size_t VID, std::size_t PORT>
         static constexpr std::size_t output_data_index() { return data_index_for_output<VID, PORT>(); }
