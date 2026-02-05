@@ -254,6 +254,7 @@ namespace ugraph {
         }
         template<std::size_t VID, std::size_t PORT>
         static constexpr std::size_t output_data_index() { return data_index_for_output<VID, PORT>(); }
+
         template<std::size_t VID, std::size_t PORT>
         static constexpr std::size_t input_data_index() { return data_index_for_input<VID, PORT>(); }
     };
