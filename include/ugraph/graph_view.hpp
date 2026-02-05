@@ -59,7 +59,7 @@ namespace ugraph {
         template<std::size_t... I>
         static constexpr auto make_vertices_tuple_t(std::index_sequence<I...>) ->
             std::tuple<typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type*...>;
-        using vertices_tuple_t = decltype(make_vertices_tuple_t(std::make_index_sequence<topology_t::size()>{}));
+        using vertices_tuple_impl_t = decltype(make_vertices_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
         template<std::size_t Id, typename Edge>
         static constexpr auto try_edge(const Edge& e) {
@@ -86,11 +86,11 @@ namespace ugraph {
         }
 
         template<std::size_t... I>
-        static constexpr vertices_tuple_t build(std::index_sequence<I...>, const edges_t&... es) {
+        static constexpr vertices_tuple_impl_t build(std::index_sequence<I...>, const edges_t&... es) {
             return { get_vertex_ptr<topology_t::template id_at<I>()>(es...)... };
         }
 
-        vertices_tuple_t mVertices;
+        vertices_tuple_impl_t mVertices;
 
         template<std::size_t _vid, std::size_t _port>
         struct producer_tag { static constexpr std::size_t vid = _vid; static constexpr std::size_t port = _port; };
@@ -284,6 +284,9 @@ namespace ugraph {
 
     public:
 
+        // Expose the vertex pointer tuple type for compile-time transforms.
+        using vertices_tuple_t = vertices_tuple_impl_t;
+
         constexpr GraphView(const edges_t&... es) :
             mVertices(build(std::make_index_sequence<topology_t::size()>{}, es...)) {}
 
@@ -310,7 +313,7 @@ namespace ugraph {
         static constexpr std::size_t input_data_index() { return data_index_for_input<VID, PORT>(); }
 
         template<typename F>
-        constexpr void apply(F&& f) const { std::apply([&] (auto*... vp) { f(*vp...); }, mVertices); }
+        constexpr auto apply(F&& f) const { return std::apply([&] (auto*... vp) { return f(*vp...); }, mVertices); }
 
         template<typename F>
         constexpr void for_each(F&& f) const { std::apply([&] (auto*... vp) { (f(*vp), ...); }, mVertices); }
