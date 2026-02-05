@@ -235,7 +235,7 @@ namespace ugraph {
                     ++found;
                 }
             }
-            return (std::size_t)0;
+            return (std::size_t) 0;
         }
 
         template<typename M, std::size_t K>
@@ -253,7 +253,7 @@ namespace ugraph {
                     ++found;
                 }
             }
-            return (std::size_t)0;
+            return (std::size_t) 0;
         }
 
         template<typename Edge>
@@ -315,12 +315,14 @@ namespace ugraph {
         static constexpr std::pair<std::size_t, std::size_t> find_pair_const() {
             if constexpr (I >= edge_count) {
                 return { 0, 0 };
-            } else {
+            }
+            else {
                 using Edge = typename detail::type_list_at<I, detail::type_list<edges_t...>>::type;
                 constexpr std::size_t sz = expanded_edge_size<Edge>::value;
                 if constexpr (K < sz) {
                     return pair_for_edge_const<Edge, K>();
-                } else {
+                }
+                else {
                     return find_pair_const<K - sz, I + 1>();
                 }
             }
@@ -333,16 +335,19 @@ namespace ugraph {
             constexpr std::size_t D = detail::type_list_size<declared>::value;
             if constexpr (I >= D) {
                 return { 0, 0 };
-            } else {
+            }
+            else {
                 using vt = typename detail::type_list_at<I, declared>::type;
                 if constexpr (!has_vertex_types_list<typename vt::module_type>::value) {
                     return find_nested_pair_const<K, I + 1>();
-                } else {
+                }
+                else {
                     constexpr auto m_edges = vt::module_type::edges();
                     constexpr std::size_t msz = m_edges.size();
                     if constexpr (K < msz) {
                         return m_edges[K];
-                    } else {
+                    }
+                    else {
                         return find_nested_pair_const<K - msz, I + 1>();
                     }
                 }

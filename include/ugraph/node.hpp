@@ -29,6 +29,7 @@
 
 #include <cstddef>
 #include <utility>
+#include <type_traits>
 #include "node_tag.hpp"
 
 namespace ugraph {
@@ -40,16 +41,21 @@ namespace ugraph {
         std::size_t _output_count,
         std::size_t _priority = 0
     >
-    struct Node : ugraph::NodeTag<_id, _module_t, _priority> {
+    struct Node :
+        ugraph::NodePortTag<
+        _id,
+        _module_t,
+        _input_count,
+        _output_count,
+        _priority
+        > {
 
-        using base_type = ugraph::NodeTag<_id, _module_t, _priority>;
-        using module_type = _module_t;
+        using base_type = ugraph::NodePortTag<_id, _module_t, _input_count, _output_count, _priority>;
+        using module_type = typename base_type::module_type;
 
         template<std::size_t _index>
-        struct Port {
+        struct Port : ugraph::PortTag<Node, _index> {
             constexpr Port(Node& v) : mNode(v) {}
-            static constexpr auto index() { return _index; }
-            using node_type = Node;
             Node& mNode;
         };
 
@@ -57,7 +63,7 @@ namespace ugraph {
         struct OutputPort : Port<_index> {
             constexpr OutputPort(Node& v) : Port<_index>(v) {}
             template<typename other_port_t>
-            constexpr auto operator>>(const other_port_t& p) const {
+            constexpr auto operator >> (const other_port_t& p) const {
                 return Link<OutputPort<_index>, other_port_t>(*this, p);
             }
         };
@@ -74,9 +80,6 @@ namespace ugraph {
             return OutputPort<_index>(*this);
         }
 
-        static constexpr std::size_t input_count() { return _input_count; }
-        static constexpr std::size_t output_count() { return _output_count; }
-
         constexpr module_type& module() { return mModule; }
         constexpr const module_type& module() const { return mModule; }
 
@@ -85,5 +88,8 @@ namespace ugraph {
     private:
         module_type& mModule;
     };
+
+    template<std::size_t id, std::size_t in, std::size_t out, std::size_t prio = 0, typename m>
+    Node(m&) -> Node<id, std::remove_cv_t<std::remove_reference_t<m>>, in, out, prio>;
 
 } // namespace ugraph

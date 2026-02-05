@@ -31,4 +31,5 @@
 #include "ugraph/topology.hpp"
 #include "ugraph/node.hpp"
 #include "ugraph/graph_view.hpp"
+#include "ugraph/interval_coloring.hpp"
 #include "ugraph/graph_printer.hpp"

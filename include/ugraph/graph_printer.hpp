@@ -52,6 +52,9 @@ namespace ugraph {
         template<std::size_t Id, typename N>
         struct user_type<NodeTag<Id, N>> { using type = N; };
 
+        template<std::size_t Id, typename N, std::size_t In, std::size_t Out, std::size_t Prio>
+        struct user_type<NodePortTag<Id, N, In, Out, Prio>> { using type = N; };
+
         // Raw printer that returns the compiler-generated type name for T,
         // then trims common prefixes and namespaces to a bare name.
         template<typename T>
