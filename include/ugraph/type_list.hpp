@@ -50,4 +50,25 @@ namespace ugraph::detail {
     template<typename... Ts>
     struct type_list_size<type_list<Ts...>> : std::integral_constant<std::size_t, sizeof...(Ts)> {};
 
+    template<typename T, typename List>
+    struct type_list_index;
+
+    template<typename T, typename... Ts>
+    struct type_list_index<T, type_list<T, Ts...>> : std::integral_constant<std::size_t, 0> {};
+
+    template<typename T, typename U, typename... Ts>
+    struct type_list_index<T, type_list<U, Ts...>>
+        : std::integral_constant<std::size_t, 1 + type_list_index<T, type_list<Ts...>>::value> {};
+
+    template<typename T>
+    struct type_list_index<T, type_list<>> {
+        static_assert(!std::is_same_v<T, T>, "Type not found in type_list");
+    };
+
+    template<typename T, typename List>
+    struct type_list_prepend;
+
+    template<typename T, typename... Ts>
+    struct type_list_prepend<T, type_list<Ts...>> { using type = type_list<T, Ts...>; };
+
 } // namespace ugraph::detail

@@ -30,6 +30,6 @@
 #include "ugraph/node_tag.hpp"
 #include "ugraph/topology.hpp"
 #include "ugraph/node.hpp"
-#include "ugraph/graph_view.hpp"
-#include "ugraph/interval_coloring.hpp"
 #include "ugraph/graph_printer.hpp"
+#include "ugraph/manifest.hpp"
+#include "ugraph/data_graph.hpp"

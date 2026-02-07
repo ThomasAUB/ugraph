@@ -33,6 +33,7 @@
 
 #include "topology.hpp"
 #include "type_list.hpp"
+#include "producer_tag.hpp"
 
 namespace ugraph {
 
@@ -57,7 +58,7 @@ namespace ugraph {
         };
 
         template<std::size_t _vid, std::size_t _port>
-        struct producer_tag { static constexpr std::size_t vid = _vid; static constexpr std::size_t port = _port; };
+        using producer_tag = ugraph::producer_tag<_vid, _port>;
         template<typename List, typename Tag> struct append_unique;
         template<typename Tag, typename... Ts>
         struct append_unique<detail::type_list<Ts...>, Tag> {

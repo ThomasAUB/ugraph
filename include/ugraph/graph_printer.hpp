@@ -34,6 +34,9 @@
 
 namespace ugraph {
 
+    template<typename...>
+    class DataGraph;
+
 
 
     template<typename graph_t, typename stream_t>
@@ -215,6 +218,10 @@ namespace ugraph {
         struct underlying_topology<GraphView<edges_t...>> {
             using type = typename topology_from_edges<typename tag_edge_from_edge<edges_t>::type...>::type;
         };
+        template<typename... edges_t>
+        struct underlying_topology<DataGraph<edges_t...>> {
+            using type = typename DataGraph<edges_t...>::topology_type;
+        };
 
         template<typename graph_t, typename stream_t>
         void print_node_names(stream_t& stream) {
@@ -231,10 +238,12 @@ namespace ugraph {
 
     template<typename graph_t, typename stream_t>
     void print_graph(stream_t& stream, const std::string_view& inGraphName) {
+        using topo_t = typename underlying_topology<std::decay_t<graph_t>>::type;
+        static_assert(!std::is_same_v<topo_t, void>, "Incompatible graph type");
 
-        constexpr auto edges_ids = graph_t::edges();
-        constexpr auto ids = graph_t::ids();
-        constexpr std::size_t vertex_count = graph_t::size();
+        constexpr auto edges_ids = topo_t::edges();
+        constexpr auto ids = topo_t::ids();
+        constexpr std::size_t vertex_count = topo_t::size();
 
         print_header(stream, inGraphName);
 
@@ -261,10 +270,12 @@ namespace ugraph {
 
     template<typename graph_t, typename stream_t>
     void print_pipeline(stream_t& stream, const std::string_view& inGraphName) {
+        using topo_t = typename underlying_topology<std::decay_t<graph_t>>::type;
+        static_assert(!std::is_same_v<topo_t, void>, "Incompatible graph type");
 
-        constexpr auto edges_ids = graph_t::edges();
-        constexpr auto ids = graph_t::ids();
-        constexpr std::size_t vertex_count = graph_t::size();
+        constexpr auto edges_ids = topo_t::edges();
+        constexpr auto ids = topo_t::ids();
+        constexpr std::size_t vertex_count = topo_t::size();
 
         print_header(stream, inGraphName);
 
