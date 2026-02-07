@@ -22,8 +22,8 @@ struct Module1 {
     >;
 
     void process(ugraph::NodeContext<Manifest>& ctx) {
-        ctx.output<MyData1>(0) = ctx.input<MyData1>(0) + 1;
-        std::cout << "module : " << ctx.output<MyData1>(0) << std::endl;
+        ctx.output<MyData1>() = ctx.input<MyData1>() + 1;
+        std::cout << "module : " << ctx.output<MyData1>() << std::endl;
     }
 
 };
@@ -37,13 +37,13 @@ struct Source {
 
     void process(ugraph::NodeContext<Manifest>& ctx) {
 
-        ctx.output<MyData1>(0) = 1;
+        ctx.output<MyData1>() = 1;
         //ctx.get<MyData1>().output<1>() = 14;
 
-        std::cout << "source 0 : " << ctx.output<MyData1>(0) << std::endl;
+        std::cout << "source 0 : " << ctx.output<MyData1>() << std::endl;
         //std::cout << "source 1 : " << ctx.get<MyData1>().output<1>() << std::endl;
 
-        ctx.output<MyEvent>(0).push_back(789);
+        ctx.output<MyEvent>().push_back(789);
     }
 
 };
@@ -62,7 +62,7 @@ struct Sink {
             std::cout << "sink " << idx++ << " : " << in << std::endl;
         }
 
-        auto& vect = ctx.input<MyEvent>(0);
+        auto& vect = ctx.input<MyEvent>();
 
         if (vect.empty()) {
             std::cout << "event empty" << std::endl;
