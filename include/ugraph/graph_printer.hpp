@@ -30,7 +30,6 @@
 #include <string_view>
 #include <type_traits>
 #include "topology.hpp"
-#include "graph_view.hpp"
 
 namespace ugraph {
 
@@ -118,7 +117,7 @@ namespace ugraph {
                     break;
                 }
             }
-#elif defined(_MSC_VER) 
+#elif defined(_MSC_VER)
             {
                 constexpr std::string_view p = __FUNCSIG__;
                 constexpr std::string_view key = "type_name<";
@@ -211,13 +210,9 @@ namespace ugraph {
             using type = Link<typename node_tag<src_t>::type, typename node_tag<dst_t>::type>;
         };
 
-        // Extract underlying Topology from types we know (Topology or GraphView)
+        // Extract underlying Topology from types we know (Topology)
         template<typename graph_t> struct underlying_topology { using type = void; };
         template<typename... edges_t> struct underlying_topology<Topology<edges_t...>> { using type = typename topology_from_edges<edges_t...>::type; };
-        template<typename... edges_t>
-        struct underlying_topology<GraphView<edges_t...>> {
-            using type = typename topology_from_edges<typename tag_edge_from_edge<edges_t>::type...>::type;
-        };
         template<typename... edges_t>
         struct underlying_topology<DataGraph<edges_t...>> {
             using type = typename DataGraph<edges_t...>::topology_type;

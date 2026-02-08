@@ -6,7 +6,7 @@
 Header‑only C++17 utilities for *static* direct acyclic graphs:
 
 * `Topology` – compile‑time topological ordering & cycle detection (no storage, no allocations)
-* `GraphView` – runtime traversal + minimal reusable buffer slot assignment
+* `DataGraph` – runtime traversal + minimal reusable buffer slot assignment
 
 Single include:
 ```cpp
@@ -125,9 +125,9 @@ using Outer = ugraph::Topology< ugraph::Link<NestedNode, X>, ugraph::Link<X, Nes
 Use `Topology::vertex_types_list_public` and `Topology::edges()` on nested module types to inspect the flattened result.
 
 
-## GraphView
+## DataGraph
 
-Builds a *runtime* view of nodes with:
+Builds a *runtime* data-graph of nodes with:
 * Compile‑time cycle detection and ordering (reuses Topology logic)
 * Port-aware dataflow traversal
 * Minimal buffer “slot” reuse via interval coloring (computes the minimum number of data instances needed for the pipeline)
@@ -148,61 +148,49 @@ ugraph::Node<10, Source, 0,1> nSrc(src);
 ugraph::Node<20, Merger, 2,1> nMerger(merger);
 ugraph::Node<30, Sink,   1,0> nSnk(sink);
 
-// Example with explicit priority: higher values are prioritized when tie-breaking
-ugraph::Node<11, Source, 0,1, 5> nSrcHighPrio(src);
-
-
 // static_assert inside ensures acyclic
-// connect both sources to the two inputs of the merger; the
-// higher-priority `nSrcHighPrio` will be scheduled first when
-// ordering needs to break ties.
-auto gv = ugraph::GraphView(
-    nSrcHighPrio.out() >> nMerger.in<0>(),
-    nSrc.out()         >> nMerger.in<1>(),
-    nMerger.out()         >> nSnk.in()
+// connect both sources to the two inputs of the merger
+auto g = ugraph::DataGraph(
+    nSrc.out() >> nMerger.in<0>(),
+    nSrc.out() >> nMerger.in<1>(),
+    nMerger.out() >> nSnk.in()
 );
 ```
 
 ### Executing the Pipeline
 
 ```cpp
-gv.apply([](auto&... nodes){ (nodes.module().run(), ...); });
+g.apply([](auto&... nodes){ (nodes.module().run(), ...); });
 // or
-gv.for_each([](auto& node){ node.module().run(); });
+g.for_each([](auto& node){ node.module().run(); });
 ```
 
-### GraphView API Summary
+### DataGraph API Summary
 
 ```cpp
 // ordered node IDs
-auto ids         = decltype(gv)::ids();
+auto ids         = decltype(g)::ids();
 
 // node count
-constexpr auto N = decltype(gv)::size();
+constexpr auto N = decltype(g)::size();
 
-gv.for_each([](auto& node){
+decltype(g)::for_each([](auto& node){
     // node.id(), node.module()
 });
 
-gv.apply([](auto& ... nodes){
+decltype(g)::apply([](auto& ... nodes){
     /* batch access */
 });
 
 // minimal buffer instances
-constexpr auto slots = decltype(gv)::data_instance_count();
-
-// data slot produced by source
-constexpr auto out_idx = gv.output_data_index<decltype(nSrc)::id(), 0>();
-
-// data slot consumed by filter
-constexpr auto in_idx  = gv.input_data_index<decltype(nFlt)::id(), 0>();
+constexpr auto slots = decltype(g)::template data_instance_count<int>();
 ```
 
 ---
 
 ### Graph printing
 
-Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `GraphView`.
+Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `DataGraph`.
 
 Include the headers via the single-include `ugraph.hpp`, then call:
 
@@ -236,7 +224,7 @@ flowchart LR
 | Runtime node   | `Node<ID, Module, In, Out>`   | Wraps user instance + port counts      |
 | Edge (link)    | `Link<Src, Dst>`              | Declares ordering dependency           |
 | Static graph   | `Topology<Link...>`           | Ordering, cycle check, visitation      |
-| Runtime view   | `GraphView<Link...>`          | Traversal + minimal buffer slot reuse  |
+| Runtime view   | `DataGraph<Link...>`          | Traversal + minimal buffer slot reuse  |
 
 ---
 

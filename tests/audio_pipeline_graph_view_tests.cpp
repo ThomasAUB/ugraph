@@ -5,7 +5,7 @@
 #include "ugraph.hpp"
 #include <chrono>
 
-// Audio processing oriented GraphView executor tests (sources -> mixer -> gain -> sink + perf).
+// Audio processing oriented DataGraph executor tests (sources -> mixer -> gain -> sink + perf).
 namespace {
 
     // Size (in samples) of each audio processing block.
@@ -35,6 +35,7 @@ namespace {
         void process(AudioBlock* out) {
             out->fill(value);
         }
+        using Manifest = ugraph::Manifest< ugraph::IO<AudioBlock, 0, 1> >;
     };
 
     // Mixes two input blocks sample-wise (sum) into an output block.
@@ -44,6 +45,7 @@ namespace {
                 out->samples[i] = a->samples[i] + b->samples[i];
             }
         }
+        using Manifest = ugraph::Manifest< ugraph::IO<AudioBlock, 2, 1> >;
     };
 
     // Scales all samples in-place.
@@ -55,6 +57,7 @@ namespace {
                 s *= gain;
             }
         }
+        using Manifest = ugraph::Manifest< ugraph::IO<AudioBlock, 1, 1> >;
     };
 
     // Sink that accumulates the sum and tracks the first sample for quick checks.
@@ -69,55 +72,54 @@ namespace {
             }
             last_sample = in->samples[0];
         }
+        using Manifest = ugraph::Manifest< ugraph::IO<AudioBlock, 1, 0> >;
     };
 
     // Small execution helper that maps the graph's data indices to concrete user process calls.
     template<typename Graph>
     struct AudioPipeline {
-        const Graph& graph;
+        Graph& graph;
 
         static constexpr std::size_t kBufferCount =
-            (Graph::data_instance_count() > 0) ? Graph::data_instance_count() : 1;
+            (Graph::template data_instance_count<AudioBlock>() > 0) ? Graph::template data_instance_count<AudioBlock>() : 1;
 
         AudioBlock buffers[kBufferCount] {};
 
-        // Helper to expand input/output port packs (C++17-friendly, no templated lambdas).
-        template<typename VType, typename BufferT, std::size_t... I, std::size_t... O>
-        static void invoke_process(
-            VType& vertex,
-            BufferT* buffers,
-            std::index_sequence<I...>,
-            std::index_sequence<O...>
-        ) {
-            constexpr auto lvid = VType::id();
-            vertex.module().process(
-                (&buffers[Graph::template input_data_index<lvid, I>()])...,
-                (&buffers[Graph::template output_data_index<lvid, O>()])...
-            );
-        }
+        // The DataGraph::for_each visitor now receives the module and its NodeContext
+        // (pointers to input/output buffers). Use the context to invoke module::process
+        // without relying on compile-time vertex ids.
 
         void process_block() {
-            // A single generic dispatch that handles any (IN, OUT) pair.
-            // Special-case only (1,1) to preserve copy semantics when buffers differ.
-            graph.for_each([&] (auto& v) {
-                using V = std::decay_t<decltype(v)>;
-                constexpr auto vid = V::id();
-                constexpr std::size_t IN = V::input_count();
-                constexpr std::size_t OUT = V::output_count();
-
+            // A single generic dispatch that handles any (IN, OUT) pair. The visitor
+            // receives the concrete module instance and a NodeContext which exposes
+            // typed input/output pointers. We use the Manifest on the module to
+            // determine per-type input/output counts and call the appropriate
+            // process() overloads.
+            graph.for_each([&] (auto& module, auto& ctx) {
+                using module_t = std::decay_t<decltype(module)>;
+                using manifest_t = typename module_t::Manifest;
+                constexpr std::size_t IN = manifest_t::template input_count<AudioBlock>();
+                constexpr std::size_t OUT = manifest_t::template output_count<AudioBlock>();
 
                 if constexpr (IN == 1 && OUT == 1) {
-                    // copy input to output when distinct, then run in-place.
-                    constexpr auto ib = Graph::template input_data_index<vid, 0>();
-                    constexpr auto ob = Graph::template output_data_index<vid, 0>();
-                    if constexpr (ib != ob) {
-                        buffers[ob].copy_from(buffers[ib]);
-                    }
-                    v.module().process(&buffers[ob]);
+                    auto& in = ctx.template input<AudioBlock>(0);
+                    auto& out = ctx.template output<AudioBlock>(0);
+                    if (&in != &out) out.copy_from(in);
+                    module.process(&out);
                 }
-                else {
-                    invoke_process(v, buffers,
-                        std::make_index_sequence<IN>{}, std::make_index_sequence<OUT>{});
+                else if constexpr (IN == 0 && OUT == 1) {
+                    auto& out = ctx.template output<AudioBlock>(0);
+                    module.process(&out);
+                }
+                else if constexpr (IN == 2 && OUT == 1) {
+                    auto& a = ctx.template input<AudioBlock>(0);
+                    auto& b = ctx.template input<AudioBlock>(1);
+                    auto& out = ctx.template output<AudioBlock>(0);
+                    module.process(&a, &b, &out);
+                }
+                else if constexpr (IN == 1 && OUT == 0) {
+                    auto& in = ctx.template input<AudioBlock>(0);
+                    module.process(&in);
                 }
                 });
         }
@@ -131,20 +133,20 @@ TEST_CASE("audio graph simple chain correctness") {
     Gain          gain { 0.5f };
     Sink          sink {};
 
-    ugraph::Node<3001, ConstantSource, 0, 1> vA(sa);
-    ugraph::Node<3002, ConstantSource, 0, 1> vB(sb);
-    ugraph::Node<3003, Mixer2, 2, 1> vMix(mix);
-    ugraph::Node<3004, Gain, 1, 1> vGain(gain);
-    ugraph::Node<3005, Sink, 1, 0> vSink(sink);
+    auto vA = ugraph::make_data_node<3001>(sa);
+    auto vB = ugraph::make_data_node<3002>(sb);
+    auto vMix = ugraph::make_data_node<3003>(mix);
+    auto vGain = ugraph::make_data_node<3004>(gain);
+    auto vSink = ugraph::make_data_node<3005>(sink);
 
-    auto g = ugraph::GraphView(
-        vA.out() >> vMix.in<0>(),
-        vB.out() >> vMix.in<1>(),
-        vMix.out() >> vGain.in(),
-        vGain.out() >> vSink.in()
+    auto g = ugraph::DataGraph(
+        vA.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 0>(),
+        vB.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 1>(),
+        vMix.output<AudioBlock, 0>() >> vGain.input<AudioBlock, 0>(),
+        vGain.output<AudioBlock, 0>() >> vSink.input<AudioBlock, 0>()
     );
 
-    static_assert(g.data_instance_count() == 3, "Unexpected buffer count");
+    static_assert(decltype(g)::template data_instance_count<AudioBlock>() == 3, "Unexpected buffer count");
 
     AudioPipeline<decltype(g)> pipe { g };
     pipe.process_block();
@@ -160,17 +162,17 @@ TEST_CASE("audio graph repeated processing") {
     Gain          gain { 2.0f };
     Sink          sink {};
 
-    ugraph::Node<4001, ConstantSource, 0, 1> vA(sa);
-    ugraph::Node<4002, ConstantSource, 0, 1> vB(sb);
-    ugraph::Node<4003, Mixer2, 2, 1> vMix(mix);
-    ugraph::Node<4004, Gain, 1, 1> vGain(gain);
-    ugraph::Node<4005, Sink, 1, 0> vSink(sink);
+    auto vA = ugraph::make_data_node<4001>(sa);
+    auto vB = ugraph::make_data_node<4002>(sb);
+    auto vMix = ugraph::make_data_node<4003>(mix);
+    auto vGain = ugraph::make_data_node<4004>(gain);
+    auto vSink = ugraph::make_data_node<4005>(sink);
 
-    auto g = ugraph::GraphView(
-        vA.out() >> vMix.in<0>(),
-        vB.out() >> vMix.in<1>(),
-        vMix.out() >> vGain.in(),
-        vGain.out() >> vSink.in()
+    auto g = ugraph::DataGraph(
+        vA.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 0>(),
+        vB.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 1>(),
+        vMix.output<AudioBlock, 0>() >> vGain.input<AudioBlock, 0>(),
+        vGain.output<AudioBlock, 0>() >> vSink.input<AudioBlock, 0>()
     );
 
     AudioPipeline<decltype(g)> pipe { g };
@@ -195,17 +197,17 @@ TEST_CASE("audio graph pipeline vs manual performance ratio") {
     Sink          sinkPipe {};
     Sink          sinkManual {};
 
-    ugraph::Node<5001, ConstantSource, 0, 1> vA(sa);
-    ugraph::Node<5002, ConstantSource, 0, 1> vB(sb);
-    ugraph::Node<5003, Mixer2, 2, 1> vMix(mix);
-    ugraph::Node<5004, Gain, 1, 1> vGain(gain);
-    ugraph::Node<5005, Sink, 1, 0> vSink(sinkPipe);
+    auto vA = ugraph::make_data_node<5001>(sa);
+    auto vB = ugraph::make_data_node<5002>(sb);
+    auto vMix = ugraph::make_data_node<5003>(mix);
+    auto vGain = ugraph::make_data_node<5004>(gain);
+    auto vSink = ugraph::make_data_node<5005>(sinkPipe);
 
-    auto g = ugraph::GraphView(
-        vA.out() >> vMix.in<0>(),
-        vB.out() >> vMix.in<1>(),
-        vMix.out() >> vGain.in(),
-        vGain.out() >> vSink.in()
+    auto g = ugraph::DataGraph(
+        vA.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 0>(),
+        vB.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 1>(),
+        vMix.output<AudioBlock, 0>() >> vGain.input<AudioBlock, 0>(),
+        vGain.output<AudioBlock, 0>() >> vSink.input<AudioBlock, 0>()
     );
 
     AudioPipeline<decltype(g)> pipe { g };

@@ -38,6 +38,7 @@
 #include "topology.hpp"
 #include "edge_traits.hpp"
 #include "type_list.hpp"
+#include "producer_tag.hpp"
 
 namespace ugraph {
 
