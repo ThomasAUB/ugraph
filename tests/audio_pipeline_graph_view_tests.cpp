@@ -5,7 +5,7 @@
 #include "ugraph.hpp"
 #include <chrono>
 
-// Audio processing oriented DataGraph executor tests (sources -> mixer -> gain -> sink + perf).
+// Audio processing oriented Graph executor tests (sources -> mixer -> gain -> sink + perf).
 namespace {
 
     // Size (in samples) of each audio processing block.
@@ -85,7 +85,7 @@ namespace {
 
         AudioBlock buffers[kBufferCount] {};
 
-        // The DataGraph::for_each visitor now receives the module and its NodeContext
+        // The Graph::for_each visitor now receives the module and its NodeContext
         // (pointers to input/output buffers). Use the context to invoke module::process
         // without relying on compile-time vertex ids.
 
@@ -133,13 +133,13 @@ TEST_CASE("audio graph simple chain correctness") {
     Gain          gain { 0.5f };
     Sink          sink {};
 
-    auto vA = ugraph::make_data_node<3001>(sa);
-    auto vB = ugraph::make_data_node<3002>(sb);
-    auto vMix = ugraph::make_data_node<3003>(mix);
-    auto vGain = ugraph::make_data_node<3004>(gain);
-    auto vSink = ugraph::make_data_node<3005>(sink);
+    auto vA = ugraph::make_node<3001>(sa);
+    auto vB = ugraph::make_node<3002>(sb);
+    auto vMix = ugraph::make_node<3003>(mix);
+    auto vGain = ugraph::make_node<3004>(gain);
+    auto vSink = ugraph::make_node<3005>(sink);
 
-    auto g = ugraph::DataGraph(
+    auto g = ugraph::Graph(
         vA.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 0>(),
         vB.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 1>(),
         vMix.output<AudioBlock, 0>() >> vGain.input<AudioBlock, 0>(),
@@ -162,13 +162,13 @@ TEST_CASE("audio graph repeated processing") {
     Gain          gain { 2.0f };
     Sink          sink {};
 
-    auto vA = ugraph::make_data_node<4001>(sa);
-    auto vB = ugraph::make_data_node<4002>(sb);
-    auto vMix = ugraph::make_data_node<4003>(mix);
-    auto vGain = ugraph::make_data_node<4004>(gain);
-    auto vSink = ugraph::make_data_node<4005>(sink);
+    auto vA = ugraph::make_node<4001>(sa);
+    auto vB = ugraph::make_node<4002>(sb);
+    auto vMix = ugraph::make_node<4003>(mix);
+    auto vGain = ugraph::make_node<4004>(gain);
+    auto vSink = ugraph::make_node<4005>(sink);
 
-    auto g = ugraph::DataGraph(
+    auto g = ugraph::Graph(
         vA.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 0>(),
         vB.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 1>(),
         vMix.output<AudioBlock, 0>() >> vGain.input<AudioBlock, 0>(),
@@ -197,13 +197,13 @@ TEST_CASE("audio graph pipeline vs manual performance ratio") {
     Sink          sinkPipe {};
     Sink          sinkManual {};
 
-    auto vA = ugraph::make_data_node<5001>(sa);
-    auto vB = ugraph::make_data_node<5002>(sb);
-    auto vMix = ugraph::make_data_node<5003>(mix);
-    auto vGain = ugraph::make_data_node<5004>(gain);
-    auto vSink = ugraph::make_data_node<5005>(sinkPipe);
+    auto vA = ugraph::make_node<5001>(sa);
+    auto vB = ugraph::make_node<5002>(sb);
+    auto vMix = ugraph::make_node<5003>(mix);
+    auto vGain = ugraph::make_node<5004>(gain);
+    auto vSink = ugraph::make_node<5005>(sinkPipe);
 
-    auto g = ugraph::DataGraph(
+    auto g = ugraph::Graph(
         vA.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 0>(),
         vB.output<AudioBlock, 0>() >> vMix.input<AudioBlock, 1>(),
         vMix.output<AudioBlock, 0>() >> vGain.input<AudioBlock, 0>(),

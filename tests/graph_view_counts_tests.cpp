@@ -2,9 +2,9 @@
 #include "ugraph.hpp"
 #include <iostream>
 
-// Tests validating DataGraph input_count, output_count and data_instance_count
+// Tests validating Graph input_count, output_count and data_instance_count
 
-// Create small module types that expose a Manifest suitable for DataGraph
+// Create small module types that expose a Manifest suitable for Graph
 
 struct JoinModule {
     using Manifest = ugraph::Manifest< ugraph::IO<int, 2, 1> >;
@@ -31,10 +31,10 @@ TEST_CASE("data_graph missing inputs and outputs and total buffer sum") {
     A_src s0m;
     JoinModule j2m;
 
-    auto vSrc = ugraph::make_data_node<10>(s0m);
-    auto vJoin = ugraph::make_data_node<12>(j2m);
+    auto vSrc = ugraph::make_node<10>(s0m);
+    auto vJoin = ugraph::make_node<12>(j2m);
 
-    auto g = ugraph::DataGraph(
+    auto g = ugraph::Graph(
         vSrc.output<int, 0>() >> vJoin.input<int, 0>()
     );
 
@@ -48,11 +48,11 @@ TEST_CASE("data_graph chain producers buffer allocation") {
     A_mid a2;
     A_sink a3;
 
-    auto vA = ugraph::make_data_node<101>(a1);
-    auto vB = ugraph::make_data_node<102>(a2);
-    auto vC = ugraph::make_data_node<103>(a3);
+    auto vA = ugraph::make_node<101>(a1);
+    auto vB = ugraph::make_node<102>(a2);
+    auto vC = ugraph::make_node<103>(a3);
 
-    auto g = ugraph::DataGraph(
+    auto g = ugraph::Graph(
         vA.output<int, 0>() >> vB.input<int, 0>(),
         vB.output<int, 0>() >> vC.input<int, 0>()
     );

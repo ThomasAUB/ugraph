@@ -27,9 +27,10 @@
 
 #pragma once
 
-#include "ugraph/node_tag.hpp"
 #include "ugraph/topology.hpp"
-#include "ugraph/node.hpp"
 #include "ugraph/graph_printer.hpp"
 #include "ugraph/manifest.hpp"
-#include "ugraph/data_graph.hpp"
+#include "ugraph/graph.hpp"
+#include "ugraph/node.hpp"
+#include "ugraph/node_tag.hpp"
+#include "ugraph/link.hpp"

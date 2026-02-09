@@ -25,16 +25,14 @@
  *                                                                                 *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+
 #pragma once
 
-#include <cstddef>
+#include <utility>
 
 namespace ugraph {
 
-    template<std::size_t Vid, std::size_t Port>
-    struct producer_tag {
-        static constexpr std::size_t vid = Vid;
-        static constexpr std::size_t port = Port;
-    };
+    template<typename src_port_t, typename dst_port_t>
+    using Link = std::pair<src_port_t, dst_port_t>;
 
-} // namespace ugraph
+}

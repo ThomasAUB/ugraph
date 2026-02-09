@@ -81,11 +81,11 @@ TEST_CASE("type name test") {
     Module1 m1;
     Sink sink;
 
-    auto srcNode = ugraph::make_data_node<100>(src);
-    auto m1Node = ugraph::make_data_node<101>(m1);
-    auto sinkNode = ugraph::make_data_node<102>(sink);
+    auto srcNode = ugraph::make_node<100>(src);
+    auto m1Node = ugraph::make_node<101>(m1);
+    auto sinkNode = ugraph::make_node<102>(sink);
 
-    ugraph::DataGraph graph(
+    ugraph::Graph graph(
         srcNode.output<MyData1, 0>() >> m1Node.input<MyData1, 0>(),
         m1Node.output<MyData1, 0>() >> sinkNode.input<MyData1, 0>(),
         srcNode.output<MyData1, 0>() >> sinkNode.input<MyData1, 1>(),

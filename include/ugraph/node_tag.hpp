@@ -28,7 +28,6 @@
 #pragma once
 
 #include <cstddef>
-#include <utility>
 
 namespace ugraph {
 
@@ -40,41 +39,9 @@ namespace ugraph {
     struct NodeTag {
         static constexpr std::size_t id() { return _id; }
         static constexpr std::size_t priority() { return _priority; }
+        static constexpr std::size_t index() { return 0; }
         using module_type = _module_t;
         using node_type = NodeTag<_id, _module_t>;
     };
-
-    template<typename node_t, std::size_t _index>
-    struct PortTag {
-        using node_type = node_t;
-        static constexpr std::size_t index() { return _index; }
-    };
-
-    template<
-        std::size_t _id,
-        typename _module_t,
-        std::size_t _input_count,
-        std::size_t _output_count,
-        std::size_t _priority = 0
-    >
-    struct NodePortTag : NodeTag<_id, _module_t, _priority> {
-
-        using base_type = NodeTag<_id, _module_t, _priority>;
-        using module_type = _module_t;
-        using node_type = NodePortTag<_id, _module_t, _input_count, _output_count, _priority>;
-
-        static constexpr std::size_t input_count() { return _input_count; }
-        static constexpr std::size_t output_count() { return _output_count; }
-
-        template<std::size_t index>
-        using InputPort = PortTag<NodePortTag, index>;
-
-        template<std::size_t index>
-        using OutputPort = PortTag<NodePortTag, index>;
-
-    };
-
-    template<typename src_port_t, typename dst_port_t>
-    using Link = std::pair<src_port_t, dst_port_t>;
 
 } // namespace ugraph

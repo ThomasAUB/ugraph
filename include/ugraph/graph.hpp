@@ -38,7 +38,6 @@
 #include "topology.hpp"
 #include "edge_traits.hpp"
 #include "type_list.hpp"
-#include "producer_tag.hpp"
 
 namespace ugraph {
 
@@ -161,81 +160,6 @@ namespace ugraph {
     };
 
 
-    template<std::size_t _id, typename module_t, typename manifest_t, std::size_t _priority = 0>
-    class DataNode {
-    public:
-        using module_type = module_t;
-        static constexpr std::size_t id() { return _id; }
-        static constexpr std::size_t priority() { return _priority; }
-
-        constexpr DataNode(module_type& module) : mModule(module) {}
-
-        constexpr module_type& module() { return mModule; }
-        constexpr const module_type& module() const { return mModule; }
-
-        template<typename T>
-        struct NodeType : NodePortTag<_id, module_type,
-            manifest_t::template input_count<T>(),
-            manifest_t::template output_count<T>(),
-            _priority> {};
-
-        template<typename T, std::size_t index>
-        struct InputPort : PortTag<NodeType<T>, index> {
-            using data_type = T;
-            constexpr InputPort(DataNode& n) : mNode(n) {}
-            DataNode& mNode;
-        };
-
-        template<typename T, std::size_t index>
-        struct OutputPort : PortTag<NodeType<T>, index> {
-            using data_type = T;
-            constexpr OutputPort(DataNode& n) : mNode(n) {}
-            DataNode& mNode;
-
-            template<typename other_port_t>
-            constexpr auto operator >> (const other_port_t& p) const {
-                return Link<OutputPort<T, index>, other_port_t>(*this, p);
-            }
-        };
-
-        template<typename T, std::size_t I>
-        constexpr auto input() {
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            return InputPort<T, I>(*this);
-        }
-
-        template<typename T, std::size_t I>
-        constexpr auto output() {
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            return OutputPort<T, I>(*this);
-        }
-
-        template<typename T, std::size_t I>
-        constexpr auto input() const {
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            return InputPort<T, I>(const_cast<DataNode&>(*this));
-        }
-
-        template<typename T, std::size_t I>
-        constexpr auto output() const {
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            return OutputPort<T, I>(const_cast<DataNode&>(*this));
-        }
-
-    private:
-        module_type& mModule;
-    };
-
-    template<
-        std::size_t id,
-        typename module_t,
-        typename manifest_t = typename module_t::Manifest,
-        std::size_t _priority = 0
-    >
-    constexpr auto make_data_node(module_t& module) {
-        return DataNode<id, module_t, manifest_t, _priority>(module);
-    }
-
     namespace detail {
         template<typename Edge>
         struct edge_data_type {
@@ -314,6 +238,12 @@ namespace ugraph {
             >;
         };
 
+        template<std::size_t Vid, std::size_t Port>
+        struct producer_tag {
+            static constexpr std::size_t vid = Vid;
+            static constexpr std::size_t port = Port;
+        };
+
         template<typename Topology, typename... edges_t>
         class data_coloring {
             using topology_t = Topology;
@@ -322,7 +252,7 @@ namespace ugraph {
             using edge_traits = ugraph::edge_traits<E>;
 
             template<std::size_t _vid, std::size_t _port>
-            using producer_tag = ugraph::producer_tag<_vid, _port>;
+            using producer_tag = producer_tag<_vid, _port>;
             template<typename List, typename Tag> struct append_unique;
             template<typename Tag, typename... Ts>
             struct append_unique<detail::type_list<Ts...>, Tag> {
@@ -901,7 +831,7 @@ namespace ugraph {
     } // namespace detail
 
     template<typename... edges_t>
-    class DataGraph {
+    class Graph {
         using traits = detail::data_graph_traits<edges_t...>;
         using topology_t = typename traits::topology_t;
         static_assert(!topology_t::is_cyclic(), "Cycle detected in graph definition");
@@ -931,7 +861,7 @@ namespace ugraph {
     public:
         using topology_type = topology_t;
 
-        constexpr DataGraph(const edges_t&... es) :
+        constexpr Graph(const edges_t&... es) :
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
             traits::init_index_fns(mInputIndex, mOutputIndex);
             allocate_data_storage_impl(std::make_index_sequence<manifest_t::type_count>{});
@@ -1059,6 +989,6 @@ namespace ugraph {
     };
 
     template<typename E0, typename... ERest>
-    DataGraph(E0 const&, ERest const&...) -> DataGraph<std::decay_t<E0>, std::decay_t<ERest>...>;
+    Graph(E0 const&, ERest const&...) -> Graph<std::decay_t<E0>, std::decay_t<ERest>...>;
 
 } // namespace ugraph

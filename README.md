@@ -6,7 +6,7 @@
 Header‑only C++17 utilities for *static* direct acyclic graphs:
 
 * `Topology` – compile‑time topological ordering & cycle detection (no storage, no allocations)
-* `DataGraph` – runtime traversal + minimal reusable buffer slot assignment
+* `Graph` – runtime traversal + minimal reusable buffer slot assignment
 
 Single include:
 ```cpp
@@ -125,7 +125,7 @@ using Outer = ugraph::Topology< ugraph::Link<NestedNode, X>, ugraph::Link<X, Nes
 Use `Topology::vertex_types_list_public` and `Topology::edges()` on nested module types to inspect the flattened result.
 
 
-## DataGraph
+## Graph
 
 Builds a *runtime* data-graph of nodes with:
 * Compile‑time cycle detection and ordering (reuses Topology logic)
@@ -150,7 +150,7 @@ ugraph::Node<30, Sink,   1,0> nSnk(sink);
 
 // static_assert inside ensures acyclic
 // connect both sources to the two inputs of the merger
-auto g = ugraph::DataGraph(
+auto g = ugraph::Graph(
     nSrc.out() >> nMerger.in<0>(),
     nSrc.out() >> nMerger.in<1>(),
     nMerger.out() >> nSnk.in()
@@ -165,7 +165,7 @@ g.apply([](auto&... nodes){ (nodes.module().run(), ...); });
 g.for_each([](auto& node){ node.module().run(); });
 ```
 
-### DataGraph API Summary
+### Graph API Summary
 
 ```cpp
 // ordered node IDs
@@ -190,7 +190,7 @@ constexpr auto slots = decltype(g)::template data_instance_count<int>();
 
 ### Graph printing
 
-Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `DataGraph`.
+Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `Graph`.
 
 Include the headers via the single-include `ugraph.hpp`, then call:
 
@@ -224,7 +224,7 @@ flowchart LR
 | Runtime node   | `Node<ID, Module, In, Out>`   | Wraps user instance + port counts      |
 | Edge (link)    | `Link<Src, Dst>`              | Declares ordering dependency           |
 | Static graph   | `Topology<Link...>`           | Ordering, cycle check, visitation      |
-| Runtime view   | `DataGraph<Link...>`          | Traversal + minimal buffer slot reuse  |
+| Runtime view   | `Graph<Link...>`          | Traversal + minimal buffer slot reuse  |
 
 ---
 
