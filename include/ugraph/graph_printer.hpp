@@ -27,14 +27,11 @@
 
 #pragma once
 
+#include <cstddef>
 #include <string_view>
 #include <type_traits>
-#include "topology.hpp"
-#include "graph_view.hpp"
 
 namespace ugraph {
-
-
 
     template<typename graph_t, typename stream_t>
     void print_graph(stream_t& stream, const std::string_view& inGraphName = "");
@@ -46,14 +43,13 @@ namespace ugraph {
 
     namespace {
 
-        // Allow showing an alternative display type (strip wrappers like NodeTag)
-        template<typename T> struct user_type { using type = T; };
+        // Allow showing an alternative display type (strip wrappers like NodeTag or node types)
+        template<typename T, typename = void>
+        struct user_type { using type = T; };
 
-        template<std::size_t Id, typename N>
-        struct user_type<NodeTag<Id, N>> { using type = N; };
-
-        template<std::size_t Id, typename N, std::size_t In, std::size_t Out, std::size_t Prio>
-        struct user_type<NodePortTag<Id, N, In, Out, Prio>> { using type = N; };
+        // If a type exposes `module_type`, prefer that as the display type (covers NodeTag and DataNode::NodeType)
+        template<typename T>
+        struct user_type<T, std::void_t<typename T::module_type>> { using type = typename T::module_type; };
 
         // Raw printer that returns the compiler-generated type name for T,
         // then trims common prefixes and namespaces to a bare name.
@@ -115,7 +111,7 @@ namespace ugraph {
                     break;
                 }
             }
-#elif defined(_MSC_VER) 
+#elif defined(_MSC_VER)
             {
                 constexpr std::string_view p = __FUNCSIG__;
                 constexpr std::string_view key = "type_name<";
@@ -190,36 +186,15 @@ namespace ugraph {
             stream << "```\n";
         }
 
-        // Extract underlying Topology from an edges parameter pack by folding back to Topology
-        template<typename... edges_t> struct topology_from_edges { using type = Topology<edges_t...>; };
-
-        // Map an Edge type (possibly using runtime Node/Port types) to a Link of NodeTag types
-        // Helper: get the underlying node-tag for either a tag type or a Port type
+        // If a type provides a topology_type, prefer it; otherwise assume the type itself is a topology-like type.
         template<typename T, typename = void>
-        struct node_tag { using type = T; };
-        template<typename port_t>
-        struct node_tag<port_t, std::void_t<typename port_t::node_type>> {
-            using type = typename port_t::node_type::base_type;
-        };
-
-        template<typename edge_t> struct tag_edge_from_edge { using type = edge_t; };
-        template<typename src_t, typename dst_t>
-        struct tag_edge_from_edge<Link<src_t, dst_t>> {
-            using type = Link<typename node_tag<src_t>::type, typename node_tag<dst_t>::type>;
-        };
-
-        // Extract underlying Topology from types we know (Topology or GraphView)
-        template<typename graph_t> struct underlying_topology { using type = void; };
-        template<typename... edges_t> struct underlying_topology<Topology<edges_t...>> { using type = typename topology_from_edges<edges_t...>::type; };
-        template<typename... edges_t>
-        struct underlying_topology<GraphView<edges_t...>> {
-            using type = typename topology_from_edges<typename tag_edge_from_edge<edges_t>::type...>::type;
-        };
+        struct printer_topology { using type = T; };
+        template<typename T>
+        struct printer_topology<T, std::void_t<typename T::topology_type>> { using type = typename T::topology_type; };
 
         template<typename graph_t, typename stream_t>
         void print_node_names(stream_t& stream) {
-            using topo_t = typename underlying_topology<std::decay_t<graph_t>>::type;
-            static_assert(!std::is_same_v<topo_t, void>, "Incompatible graph type");
+            using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
             topo_t::for_each(
                 [&] (auto v) {
                     using vt = decltype(v);
@@ -231,11 +206,10 @@ namespace ugraph {
 
     template<typename graph_t, typename stream_t>
     void print_graph(stream_t& stream, const std::string_view& inGraphName) {
+        using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
 
-        constexpr auto edges_ids = graph_t::edges();
-        constexpr auto ids = graph_t::ids();
-        constexpr std::size_t vertex_count = graph_t::size();
-
+        constexpr auto edges_ids = topo_t::edges();
+        constexpr auto ids = topo_t::ids();
         print_header(stream, inGraphName);
 
         print_node_names<graph_t>(stream);
@@ -261,11 +235,10 @@ namespace ugraph {
 
     template<typename graph_t, typename stream_t>
     void print_pipeline(stream_t& stream, const std::string_view& inGraphName) {
+        using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
 
-        constexpr auto edges_ids = graph_t::edges();
-        constexpr auto ids = graph_t::ids();
-        constexpr std::size_t vertex_count = graph_t::size();
-
+        constexpr auto edges_ids = topo_t::edges();
+        constexpr auto ids = topo_t::ids();
         print_header(stream, inGraphName);
 
         print_node_names<graph_t>(stream);

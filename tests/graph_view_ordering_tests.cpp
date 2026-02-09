@@ -3,32 +3,32 @@
 #include <vector>
 #include <string_view>
 
-// Tests validating basic GraphView ordering, fork-join shape, and for_each/apply equivalence.
+// Tests validating basic Graph ordering, fork-join shape, and for_each/apply equivalence.
 
-struct LStageA { const char* name; int i = 0; };
-struct LStageB { const char* name; int i = 0; };
-struct LStageC { const char* name; int i = 0; };
+struct LStageA { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; const char* name; int i = 0; };
+struct LStageB { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 1, 1, false> >; const char* name; int i = 0; };
+struct LStageC { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 1, 0> >; const char* name; int i = 0; };
 
 TEST_CASE("graph_view basic linear ordering") {
     LStageA sa { "A" };
     LStageB sb { "B" };
     LStageC sc { "C" };
 
-    ugraph::Node<101, LStageA, 0, 1> vA(sa);
-    ugraph::Node<102, LStageB, 1, 1> vB(sb);
-    ugraph::Node<103, LStageC, 1, 0> vC(sc);
+    auto vA = ugraph::make_node<101>(sa);
+    auto vB = ugraph::make_node<102>(sb);
+    auto vC = ugraph::make_node<103>(sc);
 
-    auto g = ugraph::GraphView(
-        vB.out() >> vC.in(),
-        vA.out() >> vB.in()
+    auto g = ugraph::Graph(
+        vB.output<const char*, 0>() >> vC.input<const char*, 0>(),
+        vA.output<const char*, 0>() >> vB.input<const char*, 0>()
     );
 
-    static_assert(decltype(g)::size() == 3, "Unexpected vertex count");
-    auto ids = decltype(g)::ids();
+    static_assert(decltype(g)::topology_type::size() == 3, "Unexpected vertex count");
+    auto ids = decltype(g)::topology_type::ids();
     CHECK(ids.size() == 3);
 
     std::vector<char> order;
-    g.apply([&] (auto&... impls) { (order.push_back(impls.module().name[0]), ...); });
+    g.for_each([&] (auto& module, auto&) { order.push_back(module.name[0]); });
 
     REQUIRE(order.size() == 3);
     CHECK(order[0] == 'A');
@@ -37,29 +37,29 @@ TEST_CASE("graph_view basic linear ordering") {
 }
 
 TEST_CASE("graph_view fork-join ordering") {
-    struct Merge { const char* name; };
+    struct Merge { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 2, 1> >; const char* name; };
     LStageA src { "src" };
     LStageB b1 { "b1" };
     LStageB b2 { "b2" };
     Merge m { "m" };
     LStageC sink { "snk" };
 
-    ugraph::Node<201, LStageA, 0, 2> vSrc(src);
-    ugraph::Node<202, LStageB, 1, 1> vB1(b1);
-    ugraph::Node<203, LStageB, 1, 1> vB2(b2);
-    ugraph::Node<204, Merge, 2, 1> vMerge(m);
-    ugraph::Node<205, LStageC, 1, 0> vSink(sink);
+    auto vSrc = ugraph::make_node<201>(src);
+    auto vB1 = ugraph::make_node<202>(b1);
+    auto vB2 = ugraph::make_node<203>(b2);
+    auto vMerge = ugraph::make_node<204>(m);
+    auto vSink = ugraph::make_node<205>(sink);
 
-    auto g = ugraph::GraphView(
-        vMerge.out() >> vSink.in(),
-        vB2.out() >> vMerge.in<1>(),
-        vSrc.out<0>() >> vB1.in(),
-        vSrc.out<1>() >> vB2.in(),
-        vB1.out() >> vMerge.in<0>()
+    auto g = ugraph::Graph(
+        vMerge.output<const char*, 0>() >> vSink.input<const char*, 0>(),
+        vB2.output<const char*, 0>() >> vMerge.input<const char*, 1>(),
+        vSrc.output<const char*, 0>() >> vB1.input<const char*, 0>(),
+        vSrc.output<const char*, 1>() >> vB2.input<const char*, 0>(),
+        vB1.output<const char*, 0>() >> vMerge.input<const char*, 0>()
     );
 
     std::vector<std::string_view> names;
-    g.apply([&] (auto&... impls) { (names.emplace_back(impls.module().name), ...); });
+    g.for_each([&] (auto& module, auto&) { names.emplace_back(module.name); });
 
     auto find_pos = [&] (std::string_view s) { for (std::size_t i = 0; i < names.size(); ++i) if (names[i] == s) return i; return names.size(); };
 
@@ -75,27 +75,27 @@ TEST_CASE("graph_view for_each vs apply equivalence and mutation") {
     LStageA sa { "A" };
     LStageB sb { "B" };
 
-    ugraph::Node<301, LStageA, 0, 1> vA(sa);
-    ugraph::Node<302, LStageB, 1, 0> vB(sb);
+    auto vA = ugraph::make_node<301>(sa);
+    auto vB = ugraph::make_node<302>(sb);
 
-    auto g = ugraph::GraphView(vA.out() >> vB.in());
+    auto g = ugraph::Graph(vA.output<const char*, 0>() >> vB.input<const char*, 0>());
 
     std::vector<char> seq1;
-    g.for_each([&] (auto& v) { seq1.push_back(v.module().name[0]); });
+    g.for_each([&] (auto& module, auto&) { seq1.push_back(module.name[0]); });
 
     std::vector<char> seq2;
-    g.apply([&] (auto&... v) { (seq2.push_back(v.module().name[0]), ...); });
+    g.for_each([&] (auto& module, auto&) { seq2.push_back(module.name[0]); });
 
     CHECK(seq1 == seq2);
     CHECK(seq1.size() == 2);
     CHECK(seq1[0] == 'A');
     CHECK(seq1[1] == 'B');
 
-    g.apply([&] (auto&... v) { (v.module().i++, ...); });
+    g.for_each([&] (auto& module, auto&) { module.i++; });
     CHECK(sa.i == 1);
     CHECK(sb.i == 1);
 
-    g.for_each([&] (auto& v) { v.module().i++; });
+    g.for_each([&] (auto& module, auto&) { module.i++; });
     CHECK(sa.i == 2);
     CHECK(sb.i == 2);
 }

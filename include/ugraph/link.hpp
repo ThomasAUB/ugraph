@@ -1,4 +1,4 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * MIT License                                                                     *
  *                                                                                 *
  * Copyright (c) 2026 Thomas AUBERT                                                *
@@ -25,12 +25,14 @@
  *                                                                                 *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+
 #pragma once
 
-#include "ugraph/topology.hpp"
-#include "ugraph/graph_printer.hpp"
-#include "ugraph/manifest.hpp"
-#include "ugraph/graph.hpp"
-#include "ugraph/node.hpp"
-#include "ugraph/node_tag.hpp"
-#include "ugraph/link.hpp"
+#include <utility>
+
+namespace ugraph {
+
+    template<typename src_port_t, typename dst_port_t>
+    using Link = std::pair<src_port_t, dst_port_t>;
+
+}

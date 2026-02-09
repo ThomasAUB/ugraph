@@ -34,22 +34,14 @@
 #include <type_traits>
 #include "node_tag.hpp"
 #include "type_list.hpp"
+#include "edge_traits.hpp"
+#include "graph_printer.hpp"
 
 namespace ugraph {
 
     template<typename... edges_t>
     class Topology {
-        // Implementation detail: edge trait extraction (source & destination vertex ids / types)
-        template<typename E>
-        struct edge_traits {
-            using edge_t = std::decay_t<E>;
-            using src_vertex_t = typename edge_t::first_type::node_type;
-            using dst_vertex_t = typename edge_t::second_type::node_type;
-            static constexpr std::size_t src_id = src_vertex_t::id();
-            static constexpr std::size_t dst_id = dst_vertex_t::id();
-        };
 
-        // Lightweight internal typelist & helpers (moved to meta.hpp for reuse)
         template<typename List, typename V> struct list_append_unique;
         template<typename V, typename... Ts>
         struct list_append_unique<detail::type_list<Ts...>, V> {
@@ -57,19 +49,11 @@ namespace ugraph {
             using type = std::conditional_t<exists, detail::type_list<Ts...>, detail::type_list<Ts..., V>>;
         };
 
-        // Clearer name alias for the unique-append metafunction used throughout
-        template<typename List, typename V>
-        using append_unique = list_append_unique<List, V>;
-
         // Helper to detect if a type exposes an inner topology vertex_types_list_public
         template<typename T, typename = void>
         struct has_vertex_types_list : std::false_type {};
         template<typename T>
         struct has_vertex_types_list<T, std::void_t<typename T::vertex_types_list_public>> : std::true_type {};
-
-        // Alternate, clearer name for readability in later code
-        template<typename T>
-        using has_nested_vertex_list = has_vertex_types_list<T>;
 
         // Append a sequence of types to a type_list while preserving uniqueness
         template<typename List, typename... Vs> struct append_types;
@@ -85,10 +69,6 @@ namespace ugraph {
         template<typename List, typename... Vs>
         struct append_type_list<List, detail::type_list<Vs...>> { using type = typename append_types<List, Vs...>::type; };
 
-        // Convenience alias for appending a typelist into another
-        template<typename List, typename TL>
-        using append_typelist = append_type_list<List, TL>;
-
         // When a vertex (NodeTag) wraps a nested Topology as its module_type,
         // expand the inner topology's vertex types into the parent list.
         template<typename List, typename V, bool = has_vertex_types_list<typename V::module_type>::value>
@@ -100,10 +80,6 @@ namespace ugraph {
             using inner = typename V::module_type::vertex_types_list_public;
             using type = typename append_type_list<List, inner>::type;
         };
-
-        // Alias returning the resulting typelist for clarity in metaprograms
-        template<typename List, typename V>
-        using list_add_vertex_t = typename list_add_vertex<List, V>::type;
 
         template<typename List, typename Edge>
         struct list_add_edge_vertices {
@@ -166,15 +142,6 @@ namespace ugraph {
                 return std::array<std::size_t, 1>{ V::id() };
             }
         }
-
-        // Compute expanded size for an Edge (number of src * number of dst ids)
-        // Helper: get number of vertices exposed by a module_type (1 if none, else inner list size)
-        template<typename M, typename = void>
-        struct module_vertex_count { static constexpr std::size_t value = 1; };
-        template<typename M>
-        struct module_vertex_count<M, std::void_t<typename M::vertex_types_list_public>> {
-            static constexpr std::size_t value = detail::type_list_size<typename M::vertex_types_list_public>::value;
-        };
 
         // Instead of exposing all inner vertices, we want to map edges to module boundary nodes:
         // - entry nodes: inner nodes with no incoming edges
@@ -372,7 +339,6 @@ namespace ugraph {
         // Provide a public alias so nested Topology types can expose their vertex list
     public:
         using vertex_types_list_public = vertex_types_list;
-        using declared_vertex_types_list_public = declared_vertex_types_list;
 
         // Kahn topological sort executed at compile time.
         struct topo_result {
@@ -510,6 +476,16 @@ namespace ugraph {
             else {
                 return apply_variadic_impl(std::forward<F>(f), std::make_index_sequence<vertex_count>{});
             }
+        }
+
+        template<typename stream_t>
+        static void print(stream_t& stream, const std::string_view& inGraphName = "") {
+            ugraph::print_graph<Topology<edges_t...>>(stream, inGraphName);
+        }
+
+        template<typename stream_t>
+        static void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "") {
+            ugraph::print_pipeline<Topology<edges_t...>>(stream, inGraphName);
         }
 
     };

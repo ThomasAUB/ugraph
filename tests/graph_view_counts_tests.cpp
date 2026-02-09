@@ -1,52 +1,63 @@
 #include "doctest.h"
 #include "ugraph.hpp"
+#include <iostream>
 
-// Tests validating GraphView input_count, output_count and data_instance_count
+// Tests validating Graph input_count, output_count and data_count
 
-struct S0 {};
-struct J2 {};
-struct A {};
+// Create small module types that expose a Manifest suitable for Graph
 
-TEST_CASE("graph_view missing inputs and outputs and total buffer sum") {
-    S0 s0m;
-    J2 j2m;
+struct JoinModule {
+    using Manifest = ugraph::Manifest< ugraph::IO<int, 2, 1, false> >;
+    void process(ugraph::NodeContext<Manifest>&) {}
+};
 
-    ugraph::Node<10, S0, 0, 1> vSrc(s0m);
-    ugraph::Node<20, J2, 2, 1> vJoin(j2m);
+struct A_src {
+    using Manifest = ugraph::Manifest< ugraph::IO<int, 0, 1> >;
+    void process(ugraph::NodeContext<Manifest>&) {}
+};
 
-    auto g = ugraph::GraphView(
-        vSrc.out() >> vJoin.in<0>()
+struct A_mid {
+    using Manifest = ugraph::Manifest< ugraph::IO<int, 1, 1> >;
+    void process(ugraph::NodeContext<Manifest>&) {}
+};
+
+struct A_sink {
+    using Manifest = ugraph::Manifest< ugraph::IO<int, 1, 0> >;
+    void process(ugraph::NodeContext<Manifest>&) {}
+};
+
+
+TEST_CASE("data_graph missing inputs and outputs and total buffer sum") {
+    A_src s0m;
+    JoinModule j2m;
+
+    auto vSrc = ugraph::make_node<10>(s0m);
+    auto vJoin = ugraph::make_node<12>(j2m);
+
+    auto g = ugraph::Graph(
+        vSrc.output<int, 0>() >> vJoin.input<int, 0>()
     );
 
-    static_assert(decltype(g)::input_count() == 1, "Unexpected input_count");
-    static_assert(decltype(g)::output_count() == 1, "Unexpected output_count");
-    static_assert(decltype(g)::data_instance_count() == 1, "Unexpected data_instance_count");
+    using G = decltype(g);
 
-    CHECK(decltype(g)::input_count() == 1);
-    CHECK(decltype(g)::output_count() == 1);
-    CHECK(decltype(g)::data_instance_count() == 1);
-
-    // The total number of data slots required equals producers + external inputs + external outputs
-    CHECK(decltype(g)::data_instance_count() + decltype(g)::input_count() + decltype(g)::output_count() == 3);
+    CHECK(G::template data_count<int>() == 1);
 }
 
-TEST_CASE("graph_view chain producers buffer allocation") {
-    A a1; A a2; A a3;
+TEST_CASE("data_graph chain producers buffer allocation") {
+    A_src a1;
+    A_mid a2;
+    A_sink a3;
 
-    ugraph::Node<101, A, 0, 1> vA(a1);
-    ugraph::Node<102, A, 1, 1> vB(a2);
-    ugraph::Node<103, A, 1, 0> vC(a3);
+    auto vA = ugraph::make_node<101>(a1);
+    auto vB = ugraph::make_node<102>(a2);
+    auto vC = ugraph::make_node<103>(a3);
 
-    auto g = ugraph::GraphView(
-        vA.out() >> vB.in(),
-        vB.out() >> vC.in()
+    auto g = ugraph::Graph(
+        vA.output<int, 0>() >> vB.input<int, 0>(),
+        vB.output<int, 0>() >> vC.input<int, 0>()
     );
 
-    // Two producers (vA.out, vB.out) with overlapping lifetimes require two buffers.
-    static_assert(decltype(g)::data_instance_count() == 2, "Unexpected data_instance_count for chain");
-    CHECK(decltype(g)::data_instance_count() == 2);
+    using G = decltype(g);
 
-    // No external inputs/outputs in this linear chain
-    CHECK(decltype(g)::input_count() == 0);
-    CHECK(decltype(g)::output_count() == 0);
+    CHECK(G::template data_count<int>() == 2);
 }

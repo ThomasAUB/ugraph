@@ -6,7 +6,7 @@
 Header‑only C++17 utilities for *static* direct acyclic graphs:
 
 * `Topology` – compile‑time topological ordering & cycle detection (no storage, no allocations)
-* `GraphView` – runtime traversal + minimal reusable buffer slot assignment
+* `Graph` – runtime traversal + minimal reusable buffer slot assignment
 
 Single include:
 ```cpp
@@ -125,9 +125,9 @@ using Outer = ugraph::Topology< ugraph::Link<NestedNode, X>, ugraph::Link<X, Nes
 Use `Topology::vertex_types_list_public` and `Topology::edges()` on nested module types to inspect the flattened result.
 
 
-## GraphView
+## Graph
 
-Builds a *runtime* view of nodes with:
+Builds a *runtime* data-graph of nodes with:
 * Compile‑time cycle detection and ordering (reuses Topology logic)
 * Port-aware dataflow traversal
 * Minimal buffer “slot” reuse via interval coloring (computes the minimum number of data instances needed for the pipeline)
@@ -135,83 +135,62 @@ Builds a *runtime* view of nodes with:
 ### Defining Runtime Nodes
 
 ```cpp
-struct Source { void run() { /* produce */ } };     // 0 in, 1 out
-struct Merger { void run() { /* transform */ } };   // 2 in, 1 out
-struct Sink   { void run() { /* consume */ } };     // 1 in, 0 out
+// User modules expose a `Manifest` describing their IO counts.
+struct Source {
+    using Manifest = ugraph::Manifest< ugraph::IO<int, 0, 1> >; // 0 in, 1 out
+    void process(ugraph::NodeContext<Manifest>&) {}
+};
+
+struct Merger {
+    using Manifest = ugraph::Manifest< ugraph::IO<int, 2, 1> >; // 2 in, 1 out
+    void process(ugraph::NodeContext<Manifest>&) {}
+};
+
+struct Sink {
+    using Manifest = ugraph::Manifest< ugraph::IO<int, 1, 0> >; // 1 in, 0 out
+    void process(ugraph::NodeContext<Manifest>&) {}
+};
 
 Source src;
 Merger merger;
 Sink sink;
 
-// optional fifth template parameter is priority (default 0)
-ugraph::Node<10, Source, 0,1> nSrc(src);
-ugraph::Node<20, Merger, 2,1> nMerger(merger);
-ugraph::Node<30, Sink,   1,0> nSnk(sink);
+// Construct strongly-typed node wrappers using `make_node<id>(module)`.
+// The helper deduces the module's `Manifest` and returns a `Node` instance.
+auto nSrc   = ugraph::make_node<10>(src);
+auto nMerger= ugraph::make_node<20>(merger);
+auto nSnk   = ugraph::make_node<30>(sink);
 
-// Example with explicit priority: higher values are prioritized when tie-breaking
-ugraph::Node<11, Source, 0,1, 5> nSrcHighPrio(src);
-
-
-// static_assert inside ensures acyclic
-// connect both sources to the two inputs of the merger; the
-// higher-priority `nSrcHighPrio` will be scheduled first when
-// ordering needs to break ties.
-auto gv = ugraph::GraphView(
-    nSrcHighPrio.out() >> nMerger.in<0>(),
-    nSrc.out()         >> nMerger.in<1>(),
-    nMerger.out()         >> nSnk.in()
+// Connect ports to form the dataflow graph
+auto g = ugraph::Graph(
+    nSrc.output<int>() >> nMerger.input<int, 0>(),
+    nSrc.output<int>() >> nMerger.input<int, 1>(),
+    nMerger.output<int>() >> nSnk.input<int>()
 );
 ```
 
 ### Executing the Pipeline
 
 ```cpp
-gv.apply([](auto&... nodes){ (nodes.module().run(), ...); });
-// or
-gv.for_each([](auto& node){ node.module().run(); });
-```
-
-### GraphView API Summary
-
-```cpp
-// ordered node IDs
-auto ids         = decltype(gv)::ids();
-
-// node count
-constexpr auto N = decltype(gv)::size();
-
-gv.for_each([](auto& node){
-    // node.id(), node.module()
+// Run each module's processing function. `for_each` provides both
+// the module instance and its `NodeContext` so you can access inputs/outputs.
+g.for_each([](auto& module, auto& ctx){
+    module.process(ctx);
 });
-
-gv.apply([](auto& ... nodes){
-    /* batch access */
-});
-
-// minimal buffer instances
-constexpr auto slots = decltype(gv)::data_instance_count();
-
-// data slot produced by source
-constexpr auto out_idx = gv.output_data_index<decltype(nSrc)::id(), 0>();
-
-// data slot consumed by filter
-constexpr auto in_idx  = gv.input_data_index<decltype(nFlt)::id(), 0>();
 ```
 
 ---
 
 ### Graph printing
 
-Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `GraphView`.
+Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `Graph`.
 
 Include the headers via the single-include `ugraph.hpp`, then call:
 
 ```cpp
-// prints nodes and configured edges as a mermaid flowchart
-ugraph::print_graph<decltype(g)>(std::cout, "MyGraph");
-
-// prints the pipeline order (topological sequence)
-ugraph::print_pipeline<decltype(g)>(std::cout, "MyPipeline");
+// Member helpers (simple):
+g.print(std::cout, "MyGraph");
+g.print_pipeline(std::cout, "MyPipeline");
 ```
 
 The output is wrapped in a fenced mermaid block suitable for embedding in Markdown.
@@ -227,6 +206,19 @@ flowchart LR
 20 --> 30
 ```
 
+### Strict Connections
+
+By default `ugraph::IO` enforces "strict" connections at compile time. The `IO` template accepts a fourth boolean parameter which enables or disables strict checking:
+
+```cpp
+// signature: IO<T, in, out, strict=true>
+using Manifest = ugraph::Manifest< ugraph::IO<MyType, 1, 0> >; // strict by default
+using Optional = ugraph::Manifest< ugraph::IO<MyType, 1, 0, false> >; // opt-out
+```
+
+When `strict` is `true` the `Graph` will `static_assert` during construction if required inputs or outputs for that type are not connected. Use `false` to allow optional/unconnected ports.
+
+This compile-time enforcement helps catch wiring mistakes early in pipelines.
 
 ## Core Concepts
 
@@ -236,7 +228,7 @@ flowchart LR
 | Runtime node   | `Node<ID, Module, In, Out>`   | Wraps user instance + port counts      |
 | Edge (link)    | `Link<Src, Dst>`              | Declares ordering dependency           |
 | Static graph   | `Topology<Link...>`           | Ordering, cycle check, visitation      |
-| Runtime view   | `GraphView<Link...>`          | Traversal + minimal buffer slot reuse  |
+| Runtime view   | `Graph<Link...>`          | Traversal + minimal buffer slot reuse  |
 
 ---
 
