@@ -31,7 +31,6 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <memory>
 
 #include "manifest.hpp"
 #include "node_tag.hpp"
@@ -456,8 +455,6 @@ namespace ugraph {
             using module_type = typename ugraph::edge_traits<first_edge_t>::src_vertex_t::module_type;
             using graph_types_list = typename collect_specs_from_typelist<typename topology_t::vertex_types_list_public>::type;
             using manifest_t = typename manifest_from_list<graph_types_list>::type;
-            using index_fn_t = std::size_t(*)(std::size_t, std::size_t);
-
             static constexpr std::size_t invalid_index = static_cast<std::size_t>(-1);
 
             template<typename T, std::size_t... I>
@@ -782,51 +779,6 @@ namespace ugraph {
             static constexpr auto output_map() {
                 return make_output_map<T>(std::make_index_sequence<topology_t::size()>{});
             }
-
-            template<typename T>
-            static std::size_t input_index_fn(std::size_t node_index, std::size_t port) {
-                static constexpr auto map = input_map<T>();
-                constexpr std::size_t port_count = graph_input_port_count<T>();
-                if (node_index >= map.size() || port >= port_count) {
-                    return invalid_index;
-                }
-                return map[node_index][port];
-            }
-
-            template<typename T>
-            static std::size_t output_index_fn(std::size_t node_index, std::size_t port) {
-                static constexpr auto map = output_map<T>();
-                constexpr std::size_t port_count = graph_output_port_count<T>();
-                if (node_index >= map.size() || port >= port_count) {
-                    return invalid_index;
-                }
-                return map[node_index][port];
-            }
-
-            template<std::size_t... I>
-            static constexpr void init_index_fns(std::array<index_fn_t, manifest_t::type_count>& input,
-                std::array<index_fn_t, manifest_t::type_count>& output,
-                std::index_sequence<I...>) {
-                ((input[I] = &input_index_fn<typename manifest_t::template type_at<I>>,
-                    output[I] = &output_index_fn<typename manifest_t::template type_at<I>>), ...);
-            }
-
-            static constexpr void init_index_fns(std::array<index_fn_t, manifest_t::type_count>& input,
-                std::array<index_fn_t, manifest_t::type_count>& output) {
-                init_index_fns(input, output, std::make_index_sequence<manifest_t::type_count>{});
-            }
-
-            template<typename NodeManifest, std::size_t... I>
-            static constexpr std::array<std::size_t, NodeManifest::type_count>
-                make_type_map(std::index_sequence<I...>) {
-                return { manifest_t::template index<typename NodeManifest::template type_at<I>>()... };
-            }
-
-            template<typename NodeManifest>
-            static const std::array<std::size_t, NodeManifest::type_count>& type_map_for() {
-                static constexpr auto map = make_type_map<NodeManifest>(std::make_index_sequence<NodeManifest::type_count>{});
-                return map;
-            }
         };
     } // namespace detail
 
@@ -848,12 +800,10 @@ namespace ugraph {
 
         modules_tuple_impl_t mModules;
         contexts_tuple_t mContexts;
-        std::array<void*, manifest_t::type_count> mDataPtrs {};
-        std::array<typename traits::index_fn_t, manifest_t::type_count> mInputIndex {};
-        std::array<typename traits::index_fn_t, manifest_t::type_count> mOutputIndex {};
         template<std::size_t... I>
         static constexpr auto make_data_storage_tuple_t(std::index_sequence<I...>) ->
-            std::tuple<std::unique_ptr<typename manifest_t::template type_at<I>[]>...>;
+            std::tuple<std::array<typename manifest_t::template type_at<I>,
+                traits::template coloring_t<typename manifest_t::template type_at<I>>::data_count() >...>;
 
         using data_storage_tuple_t = decltype(make_data_storage_tuple_t(std::make_index_sequence<manifest_t::type_count>{}));
         data_storage_tuple_t mDataStorage {};
@@ -863,8 +813,6 @@ namespace ugraph {
 
         constexpr Graph(const edges_t&... es) :
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
-            traits::init_index_fns(mInputIndex, mOutputIndex);
-            allocate_data_storage_impl(std::make_index_sequence<manifest_t::type_count>{});
             init_contexts(std::make_index_sequence<topology_t::size()>{});
         }
 
@@ -876,15 +824,25 @@ namespace ugraph {
         template<typename T>
         constexpr T* data() {
             static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            constexpr std::size_t idx = manifest_t::template index<T>();
-            return static_cast<T*>(mDataPtrs[idx]);
+            if constexpr (data_count<T>() == 0) {
+                return nullptr;
+            }
+            else {
+                constexpr std::size_t idx = manifest_t::template index<T>();
+                return std::get<idx>(mDataStorage).data();
+            }
         }
 
         template<typename T>
         constexpr const T* data() const {
             static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            constexpr std::size_t idx = manifest_t::template index<T>();
-            return static_cast<const T*>(mDataPtrs[idx]);
+            if constexpr (data_count<T>() == 0) {
+                return nullptr;
+            }
+            else {
+                constexpr std::size_t idx = manifest_t::template index<T>();
+                return std::get<idx>(mDataStorage).data();
+            }
         }
 
         template<typename T>
@@ -905,56 +863,58 @@ namespace ugraph {
         }
 
     private:
+        template<typename NodeManifest, typename T, std::size_t NodeIndex, std::size_t... P>
+        constexpr std::array<T*, NodeManifest::template input_count<T>()>
+            build_input_ptrs_array_impl(std::index_sequence<P...>) {
+            if constexpr (data_count<T>() == 0) {
+                return { ((void) P, nullptr)... };
+            }
+            else {
+                auto* base = data<T>();
+                return { ((traits::template input_index_for<T, NodeIndex, P>() == traits::invalid_index)
+                    ? nullptr
+                    : &base[traits::template input_index_for<T, NodeIndex, P>()])... };
+            }
+        }
+
         template<typename NodeManifest, typename T, std::size_t NodeIndex>
         constexpr std::array<T*, NodeManifest::template input_count<T>()>
-            build_input_ptrs_array(const std::array<std::size_t, NodeManifest::type_count>& type_map) {
-            constexpr std::size_t local_idx = NodeManifest::template index<T>();
-            const std::size_t graph_idx = type_map[local_idx];
-            auto in_fn = mInputIndex[graph_idx];
-            auto* base = static_cast<T*>(mDataPtrs[graph_idx]);
-            std::array<T*, NodeManifest::template input_count<T>()> arr {};
-            for (std::size_t i = 0; i < arr.size(); ++i) {
-                if (!base || !in_fn) {
-                    arr[i] = nullptr;
-                    continue;
-                }
-                const std::size_t idx = in_fn(NodeIndex, i);
-                arr[i] = (idx == traits::invalid_index) ? nullptr : &base[idx];
+            build_input_ptrs_array() {
+            return build_input_ptrs_array_impl<NodeManifest, T, NodeIndex>(
+                std::make_index_sequence<NodeManifest::template input_count<T>()>{});
+        }
+
+        template<typename NodeManifest, typename T, std::size_t NodeIndex, std::size_t... P>
+        constexpr std::array<T*, NodeManifest::template output_count<T>()>
+            build_output_ptrs_array_impl(std::index_sequence<P...>) {
+            if constexpr (data_count<T>() == 0) {
+                return { ((void) P, nullptr)... };
             }
-            return arr;
+            else {
+                auto* base = data<T>();
+                return { ((traits::template output_index_for<T, NodeIndex, P>() == traits::invalid_index)
+                    ? nullptr
+                    : &base[traits::template output_index_for<T, NodeIndex, P>()])... };
+            }
         }
 
         template<typename NodeManifest, typename T, std::size_t NodeIndex>
         constexpr std::array<T*, NodeManifest::template output_count<T>()>
-            build_output_ptrs_array(const std::array<std::size_t, NodeManifest::type_count>& type_map) {
-            constexpr std::size_t local_idx = NodeManifest::template index<T>();
-            const std::size_t graph_idx = type_map[local_idx];
-            auto out_fn = mOutputIndex[graph_idx];
-            auto* base = static_cast<T*>(mDataPtrs[graph_idx]);
-            std::array<T*, NodeManifest::template output_count<T>()> arr {};
-            for (std::size_t i = 0; i < arr.size(); ++i) {
-                if (!base || !out_fn) {
-                    arr[i] = nullptr;
-                    continue;
-                }
-                const std::size_t idx = out_fn(NodeIndex, i);
-                arr[i] = (idx == traits::invalid_index) ? nullptr : &base[idx];
-            }
-            return arr;
+            build_output_ptrs_array() {
+            return build_output_ptrs_array_impl<NodeManifest, T, NodeIndex>(
+                std::make_index_sequence<NodeManifest::template output_count<T>()>{});
         }
 
         template<typename NodeManifest, std::size_t NodeIndex, std::size_t... Tidx>
         constexpr typename NodeContext<NodeManifest>::input_ptrs_tuple_t
-            build_input_ptrs_tuple(const std::array<std::size_t, NodeManifest::type_count>& type_map,
-                std::index_sequence<Tidx...>) {
-            return { build_input_ptrs_array<NodeManifest, typename NodeManifest::template type_at<Tidx>, NodeIndex>(type_map)... };
+            build_input_ptrs_tuple(std::index_sequence<Tidx...>) {
+            return { build_input_ptrs_array<NodeManifest, typename NodeManifest::template type_at<Tidx>, NodeIndex>()... };
         }
 
         template<typename NodeManifest, std::size_t NodeIndex, std::size_t... Tidx>
         constexpr typename NodeContext<NodeManifest>::output_ptrs_tuple_t
-            build_output_ptrs_tuple(const std::array<std::size_t, NodeManifest::type_count>& type_map,
-                std::index_sequence<Tidx...>) {
-            return { build_output_ptrs_array<NodeManifest, typename NodeManifest::template type_at<Tidx>, NodeIndex>(type_map)... };
+            build_output_ptrs_tuple(std::index_sequence<Tidx...>) {
+            return { build_output_ptrs_array<NodeManifest, typename NodeManifest::template type_at<Tidx>, NodeIndex>()... };
         }
 
         template<std::size_t I, typename F>
@@ -971,10 +931,9 @@ namespace ugraph {
         constexpr void init_context_at() {
             using node_type = node_type_at<I>;
             using node_manifest = typename node_type::module_type::Manifest;
-            auto& map = traits::template type_map_for<node_manifest>();
             auto& ctx = std::get<I>(mContexts);
-            auto input_ptrs = build_input_ptrs_tuple<node_manifest, I>(map, std::make_index_sequence<node_manifest::type_count>{});
-            auto output_ptrs = build_output_ptrs_tuple<node_manifest, I>(map, std::make_index_sequence<node_manifest::type_count>{});
+            auto input_ptrs = build_input_ptrs_tuple<node_manifest, I>(std::make_index_sequence<node_manifest::type_count>{});
+            auto output_ptrs = build_output_ptrs_tuple<node_manifest, I>(std::make_index_sequence<node_manifest::type_count>{});
             ctx = NodeContext<node_manifest>(input_ptrs, output_ptrs);
         }
 
@@ -983,32 +942,13 @@ namespace ugraph {
             (init_context_at<I>(), ...);
         }
 
-        template<std::size_t I>
-        constexpr void allocate_for_index() {
-            using T = typename manifest_t::template type_at<I>;
-            constexpr std::size_t count = data_count<T>();
-            if constexpr (count > 0) {
-                std::get<I>(mDataStorage) = std::unique_ptr<T[]>(new T[count]);
-                mDataPtrs[I] = std::get<I>(mDataStorage).get();
-            }
-            else {
-                mDataPtrs[I] = nullptr;
-            }
-        }
-
-        template<std::size_t... I>
-        constexpr void allocate_data_storage_impl(std::index_sequence<I...>) {
-            (allocate_for_index<I>(), ...);
-        }
-
         template<typename T, std::size_t I>
         constexpr void refresh_context_for_type_at() {
             using node_type = node_type_at<I>;
             using node_manifest = typename node_type::module_type::Manifest;
             if constexpr (node_manifest::template contains<T>) {
-                auto& map = traits::template type_map_for<node_manifest>();
-                auto input_ptrs = build_input_ptrs_tuple<node_manifest, I>(map, std::make_index_sequence<node_manifest::type_count>{});
-                auto output_ptrs = build_output_ptrs_tuple<node_manifest, I>(map, std::make_index_sequence<node_manifest::type_count>{});
+                auto input_ptrs = build_input_ptrs_tuple<node_manifest, I>(std::make_index_sequence<node_manifest::type_count>{});
+                auto output_ptrs = build_output_ptrs_tuple<node_manifest, I>(std::make_index_sequence<node_manifest::type_count>{});
                 std::get<I>(mContexts) = NodeContext<node_manifest>(input_ptrs, output_ptrs);
             }
         }
