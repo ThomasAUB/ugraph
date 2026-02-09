@@ -21,11 +21,11 @@ TEST_CASE("topology priority tie-breaking") {
     P_B_d bd { "B" };
     P_C_d cd { "C" };
 
-    auto vA = ugraph::make_data_node<401, P_A_d, P_A_d::Manifest, 10>(ad);
-    auto vB = ugraph::make_data_node<402, P_B_d, P_B_d::Manifest, 11>(bd);
-    auto vC = ugraph::make_data_node<403>(cd);
+    auto vA = ugraph::make_node<401, P_A_d, P_A_d::Manifest, 10>(ad);
+    auto vB = ugraph::make_node<402, P_B_d, P_B_d::Manifest, 11>(bd);
+    auto vC = ugraph::make_node<403>(cd);
 
-    auto g = ugraph::DataGraph(
+    auto g = ugraph::Graph(
         vA.output<const char*, 0>() >> vC.input<const char*, 0>(),
         vB.output<const char*, 0>() >> vC.input<const char*, 1>()
     );

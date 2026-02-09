@@ -34,22 +34,13 @@
 #include <type_traits>
 #include "node_tag.hpp"
 #include "type_list.hpp"
+#include "edge_traits.hpp"
 
 namespace ugraph {
 
     template<typename... edges_t>
     class Topology {
-        // Implementation detail: edge trait extraction (source & destination vertex ids / types)
-        template<typename E>
-        struct edge_traits {
-            using edge_t = std::decay_t<E>;
-            using src_vertex_t = typename edge_t::first_type::node_type;
-            using dst_vertex_t = typename edge_t::second_type::node_type;
-            static constexpr std::size_t src_id = src_vertex_t::id();
-            static constexpr std::size_t dst_id = dst_vertex_t::id();
-        };
 
-        // Lightweight internal typelist & helpers (moved to meta.hpp for reuse)
         template<typename List, typename V> struct list_append_unique;
         template<typename V, typename... Ts>
         struct list_append_unique<detail::type_list<Ts...>, V> {

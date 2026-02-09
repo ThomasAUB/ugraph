@@ -30,11 +30,12 @@
 #include <string_view>
 #include <type_traits>
 #include "topology.hpp"
+#include "link.hpp"
 
 namespace ugraph {
 
     template<typename...>
-    class DataGraph;
+    class Graph;
 
 
 
@@ -48,14 +49,13 @@ namespace ugraph {
 
     namespace {
 
-        // Allow showing an alternative display type (strip wrappers like NodeTag)
-        template<typename T> struct user_type { using type = T; };
+        // Allow showing an alternative display type (strip wrappers like NodeTag or node types)
+        template<typename T, typename = void>
+        struct user_type { using type = T; };
 
-        template<std::size_t Id, typename N>
-        struct user_type<NodeTag<Id, N>> { using type = N; };
-
-        template<std::size_t Id, typename N, std::size_t In, std::size_t Out, std::size_t Prio>
-        struct user_type<NodePortTag<Id, N, In, Out, Prio>> { using type = N; };
+        // If a type exposes `module_type`, prefer that as the display type (covers NodeTag and DataNode::NodeType)
+        template<typename T>
+        struct user_type<T, std::void_t<typename T::module_type>> { using type = typename T::module_type; };
 
         // Raw printer that returns the compiler-generated type name for T,
         // then trims common prefixes and namespaces to a bare name.
@@ -201,7 +201,7 @@ namespace ugraph {
         struct node_tag { using type = T; };
         template<typename port_t>
         struct node_tag<port_t, std::void_t<typename port_t::node_type>> {
-            using type = typename port_t::node_type::base_type;
+            using type = typename port_t::node_type;
         };
 
         template<typename edge_t> struct tag_edge_from_edge { using type = edge_t; };
@@ -214,8 +214,8 @@ namespace ugraph {
         template<typename graph_t> struct underlying_topology { using type = void; };
         template<typename... edges_t> struct underlying_topology<Topology<edges_t...>> { using type = typename topology_from_edges<edges_t...>::type; };
         template<typename... edges_t>
-        struct underlying_topology<DataGraph<edges_t...>> {
-            using type = typename DataGraph<edges_t...>::topology_type;
+        struct underlying_topology<Graph<edges_t...>> {
+            using type = typename Graph<edges_t...>::topology_type;
         };
 
         template<typename graph_t, typename stream_t>

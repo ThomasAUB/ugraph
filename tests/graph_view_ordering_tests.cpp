@@ -3,7 +3,7 @@
 #include <vector>
 #include <string_view>
 
-// Tests validating basic DataGraph ordering, fork-join shape, and for_each/apply equivalence.
+// Tests validating basic Graph ordering, fork-join shape, and for_each/apply equivalence.
 
 struct LStageA { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; const char* name; int i = 0; };
 struct LStageB { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 1, 1> >; const char* name; int i = 0; };
@@ -14,11 +14,11 @@ TEST_CASE("graph_view basic linear ordering") {
     LStageB sb { "B" };
     LStageC sc { "C" };
 
-    auto vA = ugraph::make_data_node<101>(sa);
-    auto vB = ugraph::make_data_node<102>(sb);
-    auto vC = ugraph::make_data_node<103>(sc);
+    auto vA = ugraph::make_node<101>(sa);
+    auto vB = ugraph::make_node<102>(sb);
+    auto vC = ugraph::make_node<103>(sc);
 
-    auto g = ugraph::DataGraph(
+    auto g = ugraph::Graph(
         vB.output<const char*, 0>() >> vC.input<const char*, 0>(),
         vA.output<const char*, 0>() >> vB.input<const char*, 0>()
     );
@@ -44,13 +44,13 @@ TEST_CASE("graph_view fork-join ordering") {
     Merge m { "m" };
     LStageC sink { "snk" };
 
-    auto vSrc = ugraph::make_data_node<201>(src);
-    auto vB1 = ugraph::make_data_node<202>(b1);
-    auto vB2 = ugraph::make_data_node<203>(b2);
-    auto vMerge = ugraph::make_data_node<204>(m);
-    auto vSink = ugraph::make_data_node<205>(sink);
+    auto vSrc = ugraph::make_node<201>(src);
+    auto vB1 = ugraph::make_node<202>(b1);
+    auto vB2 = ugraph::make_node<203>(b2);
+    auto vMerge = ugraph::make_node<204>(m);
+    auto vSink = ugraph::make_node<205>(sink);
 
-    auto g = ugraph::DataGraph(
+    auto g = ugraph::Graph(
         vMerge.output<const char*, 0>() >> vSink.input<const char*, 0>(),
         vB2.output<const char*, 0>() >> vMerge.input<const char*, 1>(),
         vSrc.output<const char*, 0>() >> vB1.input<const char*, 0>(),
@@ -75,10 +75,10 @@ TEST_CASE("graph_view for_each vs apply equivalence and mutation") {
     LStageA sa { "A" };
     LStageB sb { "B" };
 
-    auto vA = ugraph::make_data_node<301>(sa);
-    auto vB = ugraph::make_data_node<302>(sb);
+    auto vA = ugraph::make_node<301>(sa);
+    auto vB = ugraph::make_node<302>(sb);
 
-    auto g = ugraph::DataGraph(vA.output<const char*, 0>() >> vB.input<const char*, 0>());
+    auto g = ugraph::Graph(vA.output<const char*, 0>() >> vB.input<const char*, 0>());
 
     std::vector<char> seq1;
     g.for_each([&] (auto& module, auto&) { seq1.push_back(module.name[0]); });
