@@ -34,9 +34,11 @@
 
 #include "manifest.hpp"
 #include "node_tag.hpp"
+#include "link.hpp"
 #include "topology.hpp"
 #include "edge_traits.hpp"
 #include "type_list.hpp"
+#include "graph_printer.hpp"
 
 namespace ugraph {
 
@@ -438,12 +440,6 @@ namespace ugraph {
         template<typename Topology>
         struct coloring_or_empty<Topology, detail::type_list<>> { using type = empty_coloring; };
 
-        template<typename T, std::size_t LinearIndex, std::size_t PortCount>
-        struct linear_port_traits {
-            static constexpr std::size_t node_index = LinearIndex / PortCount;
-            static constexpr std::size_t port_index = LinearIndex % PortCount;
-        };
-
         template<typename... edges_t>
         struct data_graph_traits {
             using topology_t = Topology<edges_t...>;
@@ -451,43 +447,9 @@ namespace ugraph {
             template<std::size_t I>
             using node_type_at = typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type;
 
-            using first_edge_t = typename std::tuple_element<0, std::tuple<edges_t...>>::type;
-            using module_type = typename ugraph::edge_traits<first_edge_t>::src_vertex_t::module_type;
             using graph_types_list = typename collect_specs_from_typelist<typename topology_t::vertex_types_list_public>::type;
             using manifest_t = typename manifest_from_list<graph_types_list>::type;
             static constexpr std::size_t invalid_index = static_cast<std::size_t>(-1);
-
-            template<typename T, std::size_t... I>
-            static constexpr std::size_t graph_input_port_count_impl(std::index_sequence<I...>) {
-                const std::size_t vals[] = { (std::is_same_v<typename io_traits<typename detail::type_list_at<I, graph_types_list>::type>::type, T> ?
-                    io_traits<typename detail::type_list_at<I, graph_types_list>::type>::input_count : 0)... };
-                std::size_t m = 0;
-                for (std::size_t i = 0; i < sizeof...(I); ++i) if (vals[i] > m) m = vals[i];
-                return m;
-            }
-
-            template<typename T>
-            static constexpr std::size_t graph_input_port_count() {
-                constexpr std::size_t N = detail::type_list_size<graph_types_list>::value;
-                if constexpr (N == 0) return 0;
-                else return graph_input_port_count_impl<T>(std::make_index_sequence<N>{});
-            }
-
-            template<typename T, std::size_t... I>
-            static constexpr std::size_t graph_output_port_count_impl(std::index_sequence<I...>) {
-                const std::size_t vals[] = { (std::is_same_v<typename io_traits<typename detail::type_list_at<I, graph_types_list>::type>::type, T> ?
-                    io_traits<typename detail::type_list_at<I, graph_types_list>::type>::output_count : 0)... };
-                std::size_t m = 0;
-                for (std::size_t i = 0; i < sizeof...(I); ++i) if (vals[i] > m) m = vals[i];
-                return m;
-            }
-
-            template<typename T>
-            static constexpr std::size_t graph_output_port_count() {
-                constexpr std::size_t N = detail::type_list_size<graph_types_list>::value;
-                if constexpr (N == 0) return 0;
-                else return graph_output_port_count_impl<T>(std::make_index_sequence<N>{});
-            }
 
             template<std::size_t... I>
             static constexpr auto make_modules_tuple_t(std::index_sequence<I...>) ->
@@ -568,162 +530,6 @@ namespace ugraph {
                 return has_output_edge_impl<T, VID, PORT, edges_t...>::value;
             }
 
-            template<typename Manifest, typename T, std::size_t NodeIndex, std::size_t... P>
-            static constexpr bool all_inputs_connected_impl(std::index_sequence<P...>) {
-                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
-                return (has_input_edge<T, vid, P>() && ... && true);
-            }
-
-            template<typename Manifest, typename T, std::size_t NodeIndex>
-            static constexpr bool all_inputs_connected() {
-                if constexpr (Manifest::template input_count<T>() == 0) return true;
-                else return all_inputs_connected_impl<Manifest, T, NodeIndex>(std::make_index_sequence<Manifest::template input_count<T>()>{});
-            }
-
-            template<typename Manifest, typename T, std::size_t NodeIndex, std::size_t... P>
-            static constexpr bool all_outputs_connected_impl(std::index_sequence<P...>) {
-                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
-                return (has_output_edge<T, vid, P>() && ... && true);
-            }
-
-            template<typename Manifest, typename T, std::size_t NodeIndex>
-            static constexpr bool all_outputs_connected() {
-                if constexpr (Manifest::template output_count<T>() == 0) return true;
-                else return all_outputs_connected_impl<Manifest, T, NodeIndex>(std::make_index_sequence<Manifest::template output_count<T>()>{});
-            }
-
-            template<typename Manifest, typename T, std::size_t NodeIndex>
-            static constexpr bool all_ports_connected_for_type() {
-                return all_inputs_connected<Manifest, T, NodeIndex>() && all_outputs_connected<Manifest, T, NodeIndex>();
-            }
-
-            template<typename Manifest, std::size_t NodeIndex, std::size_t... Tidx>
-            static constexpr bool all_ports_connected_for_manifest_types(std::index_sequence<Tidx...>) {
-                return (all_ports_connected_for_type<Manifest, typename Manifest::template type_at<Tidx>, NodeIndex>() && ... && true);
-            }
-
-            template<std::size_t NodeIndex>
-            static constexpr bool all_ports_connected_for_node() {
-                using node_type = typename topology_t::template find_type_by_id<topology_t::template id_at<NodeIndex>()>::type;
-                using node_manifest = typename node_type::module_type::Manifest;
-                return all_ports_connected_for_manifest_types<node_manifest, NodeIndex>(std::make_index_sequence<node_manifest::type_count>{});
-            }
-
-            template<std::size_t... Nodeidx>
-            static constexpr bool all_ports_connected_all_nodes(std::index_sequence<Nodeidx...>) {
-                return (all_ports_connected_for_node<Nodeidx>() && ... && true);
-            }
-
-            static constexpr bool all_ports_connected =
-                all_ports_connected_all_nodes(std::make_index_sequence<topology_t::size()>{});
-
-            template<typename T, std::size_t NodeIndex, std::size_t... P>
-            static constexpr bool has_any_input_for_node_impl(std::index_sequence<P...>) {
-                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
-                return (has_input_edge<T, vid, P>() || ... || false);
-            }
-
-            template<typename T, std::size_t NodeIndex>
-            static constexpr bool has_any_input_for_node() {
-                if constexpr (graph_input_port_count<T>() == 0) return false;
-                else return has_any_input_for_node_impl<T, NodeIndex>(std::make_index_sequence<graph_input_port_count<T>()>{});
-            }
-
-            template<typename T, std::size_t NodeIndex, std::size_t... P>
-            static constexpr bool has_any_output_for_node_impl(std::index_sequence<P...>) {
-                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
-                return (has_output_edge<T, vid, P>() || ... || false);
-            }
-
-            template<typename T, std::size_t NodeIndex>
-            static constexpr bool has_any_output_for_node() {
-                if constexpr (graph_output_port_count<T>() == 0) return false;
-                else return has_any_output_for_node_impl<T, NodeIndex>(std::make_index_sequence<graph_output_port_count<T>()>{});
-            }
-
-            template<typename T, std::size_t NodeIndex>
-            static constexpr bool participates_in_type() {
-                return has_any_input_for_node<T, NodeIndex>() || has_any_output_for_node<T, NodeIndex>();
-            }
-
-            template<typename T, std::size_t NodeIndex, std::size_t... P>
-            static constexpr std::size_t missing_inputs_for_node_impl(std::index_sequence<P...>) {
-                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
-                return ((has_input_edge<T, vid, P>() ? 0 : 1) + ... + 0);
-            }
-
-            template<typename T, std::size_t NodeIndex>
-            static constexpr std::size_t missing_inputs_for_node() {
-                if constexpr (graph_input_port_count<T>() == 0) return 0;
-                else if constexpr (!participates_in_type<T, NodeIndex>()) return 0;
-                else return missing_inputs_for_node_impl<T, NodeIndex>(std::make_index_sequence<graph_input_port_count<T>()>{});
-            }
-
-            template<typename T, std::size_t... N>
-            static constexpr std::size_t missing_inputs_all(std::index_sequence<N...>) {
-                return (missing_inputs_for_node<T, N>() + ... + 0);
-            }
-
-            template<typename T>
-            static constexpr std::size_t external_input_count() {
-                return missing_inputs_all<T>(std::make_index_sequence<topology_t::size()>{});
-            }
-
-            template<typename T, std::size_t NodeIndex, std::size_t... P>
-            static constexpr std::size_t missing_outputs_for_node_impl(std::index_sequence<P...>) {
-                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
-                return ((has_output_edge<T, vid, P>() ? 0 : 1) + ... + 0);
-            }
-
-            template<typename T, std::size_t NodeIndex>
-            static constexpr std::size_t missing_outputs_for_node() {
-                if constexpr (graph_output_port_count<T>() == 0) return 0;
-                else if constexpr (!participates_in_type<T, NodeIndex>()) return 0;
-                else return missing_outputs_for_node_impl<T, NodeIndex>(std::make_index_sequence<graph_output_port_count<T>()>{});
-            }
-
-            template<typename T, std::size_t... N>
-            static constexpr std::size_t missing_outputs_all(std::index_sequence<N...>) {
-                return (missing_outputs_for_node<T, N>() + ... + 0);
-            }
-
-            template<typename T>
-            static constexpr std::size_t external_output_count() {
-                return missing_outputs_all<T>(std::make_index_sequence<topology_t::size()>{});
-            }
-
-            template<typename T, std::size_t LinearIndex>
-            struct missing_input_before {
-                static constexpr std::size_t in_count = graph_input_port_count<T>();
-                static constexpr std::size_t node_index = detail::linear_port_traits<T, LinearIndex, in_count>::node_index;
-                static constexpr std::size_t port_index = detail::linear_port_traits<T, LinearIndex, in_count>::port_index;
-                static constexpr std::size_t vid = topology_t::template id_at<node_index>();
-                static constexpr std::size_t prev = missing_input_before<T, LinearIndex - 1>::value;
-                static constexpr bool missing = participates_in_type<T, node_index>() && !has_input_edge<T, vid, port_index>();
-                static constexpr std::size_t value = prev + (missing ? 1 : 0);
-            };
-
-            template<typename T>
-            struct missing_input_before<T, 0> {
-                static constexpr std::size_t value = 0;
-            };
-
-            template<typename T, std::size_t LinearIndex>
-            struct missing_output_before {
-                static constexpr std::size_t out_count = manifest_t::template output_count<T>();
-                static constexpr std::size_t node_index = detail::linear_port_traits<T, LinearIndex, out_count>::node_index;
-                static constexpr std::size_t port_index = detail::linear_port_traits<T, LinearIndex, out_count>::port_index;
-                static constexpr std::size_t vid = topology_t::template id_at<node_index>();
-                static constexpr std::size_t prev = missing_output_before<T, LinearIndex - 1>::value;
-                static constexpr bool missing = participates_in_type<T, node_index>() && !has_output_edge<T, vid, port_index>();
-                static constexpr std::size_t value = prev + (missing ? 1 : 0);
-            };
-
-            template<typename T>
-            struct missing_output_before<T, 0> {
-                static constexpr std::size_t value = 0;
-            };
-
             template<typename T, std::size_t NodeIndex, std::size_t PortIndex>
             static constexpr std::size_t input_index_for() {
                 constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
@@ -746,39 +552,7 @@ namespace ugraph {
                 }
             }
 
-            template<typename T, std::size_t NodeIndex, std::size_t... P>
-            static constexpr std::array<std::size_t, graph_input_port_count<T>()>
-                make_input_row(std::index_sequence<P...>) {
-                return { input_index_for<T, NodeIndex, P>()... };
-            }
 
-            template<typename T, std::size_t NodeIndex, std::size_t... P>
-            static constexpr std::array<std::size_t, graph_output_port_count<T>()>
-                make_output_row(std::index_sequence<P...>) {
-                return { output_index_for<T, NodeIndex, P>()... };
-            }
-
-            template<typename T, std::size_t... N>
-            static constexpr std::array<std::array<std::size_t, graph_input_port_count<T>()>, topology_t::size()>
-                make_input_map(std::index_sequence<N...>) {
-                return { make_input_row<T, N>(std::make_index_sequence<graph_input_port_count<T>()>{})... };
-            }
-
-            template<typename T, std::size_t... N>
-            static constexpr std::array<std::array<std::size_t, graph_output_port_count<T>()>, topology_t::size()>
-                make_output_map(std::index_sequence<N...>) {
-                return { make_output_row<T, N>(std::make_index_sequence<graph_output_port_count<T>()>{})... };
-            }
-
-            template<typename T>
-            static constexpr auto input_map() {
-                return make_input_map<T>(std::make_index_sequence<topology_t::size()>{});
-            }
-
-            template<typename T>
-            static constexpr auto output_map() {
-                return make_output_map<T>(std::make_index_sequence<topology_t::size()>{});
-            }
         };
     } // namespace detail
 
@@ -803,7 +577,7 @@ namespace ugraph {
         template<std::size_t... I>
         static constexpr auto make_data_storage_tuple_t(std::index_sequence<I...>) ->
             std::tuple<std::array<typename manifest_t::template type_at<I>,
-                traits::template coloring_t<typename manifest_t::template type_at<I>>::data_count() >...>;
+            traits::template coloring_t<typename manifest_t::template type_at<I>>::data_count() >...>;
 
         using data_storage_tuple_t = decltype(make_data_storage_tuple_t(std::make_index_sequence<manifest_t::type_count>{}));
         data_storage_tuple_t mDataStorage {};
@@ -860,6 +634,16 @@ namespace ugraph {
         template<typename T>
         static constexpr std::size_t data_count() {
             return traits::template coloring_t<T>::data_count();
+        }
+
+        template<typename stream_t>
+        void print(stream_t& stream, const std::string_view& inGraphName = "") const {
+            ugraph::print_graph<topology_t>(stream, inGraphName);
+        }
+
+        template<typename stream_t>
+        void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "") const {
+            ugraph::print_pipeline<topology_t>(stream, inGraphName);
         }
 
     private:
@@ -942,16 +726,7 @@ namespace ugraph {
             (init_context_at<I>(), ...);
         }
 
-        template<typename T, std::size_t I>
-        constexpr void refresh_context_for_type_at() {
-            using node_type = node_type_at<I>;
-            using node_manifest = typename node_type::module_type::Manifest;
-            if constexpr (node_manifest::template contains<T>) {
-                auto input_ptrs = build_input_ptrs_tuple<node_manifest, I>(std::make_index_sequence<node_manifest::type_count>{});
-                auto output_ptrs = build_output_ptrs_tuple<node_manifest, I>(std::make_index_sequence<node_manifest::type_count>{});
-                std::get<I>(mContexts) = NodeContext<node_manifest>(input_ptrs, output_ptrs);
-            }
-        }
+
     };
 
     template<typename E0, typename... ERest>
