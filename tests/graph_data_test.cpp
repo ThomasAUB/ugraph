@@ -15,9 +15,13 @@ struct Module1 {
         ugraph::IO<MyData1, 1, 1>
     >;
 
+    int last_in = 0;
+    int last_out = 0;
+
     void process(ugraph::NodeContext<Manifest>& ctx) {
-        ctx.output<MyData1>() = ctx.input<MyData1>() + 1;
-        std::cout << "module : " << ctx.output<MyData1>() << std::endl;
+        last_in = ctx.input<MyData1>();
+        last_out = last_in + 1;
+        ctx.output<MyData1>() = last_out;
     }
 
 };
@@ -29,10 +33,12 @@ struct Source {
         ugraph::IO<MyEvent, 0, 1>
     >;
 
+    int out_value = 1;
+    int event_value = 789;
+
     void process(ugraph::NodeContext<Manifest>& ctx) {
-        ctx.output<MyData1>() = 1;
-        std::cout << "source 0 : " << ctx.output<MyData1>() << std::endl;
-        ctx.output<MyEvent>().push_back(789);
+        ctx.output<MyData1>() = out_value;
+        ctx.output<MyEvent>().push_back(event_value);
     }
 
 };
@@ -44,27 +50,26 @@ struct Sink {
         ugraph::IO<MyEvent, 1, 0>
     >;
 
+    std::vector<int> inputs;
+    bool event_seen = false;
+    int event_value = -1;
+
     void process(ugraph::NodeContext<Manifest>& ctx) {
 
-        int idx = 0;
+        inputs.clear();
         for (auto& in : ctx.inputs<MyData1>()) {
-            std::cout << "sink " << idx++ << " : " << in << std::endl;
+            inputs.push_back(in);
         }
 
         auto& vect = ctx.input<MyEvent>();
-
-        if (vect.empty()) {
-            std::cout << "event empty" << std::endl;
-        }
-        else {
-            std::cout << "received event " << vect.back() << std::endl;
-        }
+        event_seen = !vect.empty();
+        event_value = event_seen ? vect.back() : -1;
 
     }
 
 };
 
-TEST_CASE("type name test") {
+TEST_CASE("graph data propagation") {
 
     Source src;
     Module1 m1;
@@ -87,7 +92,15 @@ TEST_CASE("type name test") {
         }
     );
 
-
+    CHECK(graph.data_count<MyData1>() == 2);
+    CHECK(graph.data_count<MyEvent>() == 1);
+    CHECK(m1.last_in == 1);
+    CHECK(m1.last_out == 2);
+    REQUIRE(sink.inputs.size() == 2);
+    CHECK(sink.inputs[0] == 2);
+    CHECK(sink.inputs[1] == 1);
+    CHECK(sink.event_seen);
+    CHECK(sink.event_value == 789);
 
 }
 
