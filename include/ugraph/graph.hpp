@@ -64,8 +64,7 @@ namespace ugraph {
         constexpr NodeContext(
             const input_ptrs_tuple_t& input_ptrs,
             const output_ptrs_tuple_t& output_ptrs
-        )
-            : mInputPtrsTuple(input_ptrs),
+        ) : mInputPtrsTuple(input_ptrs),
             mOutputPtrsTuple(output_ptrs) {}
 
         template<typename T>
@@ -98,13 +97,13 @@ namespace ugraph {
             return view_t(std::addressof(std::get<ManifestT::template index<T>()>(mOutputPtrsTuple)));
         }
 
-        template<typename T, std::size_t I>
+        template<typename T, std::size_t I = 0>
         constexpr bool has_input() const {
             static_assert(ManifestT::template contains<T>, "Type not declared in Manifest");
             return input_ptrs<T>()[I] != nullptr;
         }
 
-        template<typename T, std::size_t I>
+        template<typename T, std::size_t I = 0>
         constexpr bool has_output() const {
             static_assert(ManifestT::template contains<T>, "Type not declared in Manifest");
             return output_ptrs<T>()[I] != nullptr;
@@ -118,6 +117,12 @@ namespace ugraph {
 
         template<typename T>
         constexpr auto& output_ptrs() {
+            static_assert(ManifestT::template contains<T>, "Type not declared in Manifest");
+            return std::get<ManifestT::template index<T>()>(mOutputPtrsTuple);
+        }
+
+        template<typename T>
+        constexpr const auto& output_ptrs() const {
             static_assert(ManifestT::template contains<T>, "Type not declared in Manifest");
             return std::get<ManifestT::template index<T>()>(mOutputPtrsTuple);
         }
@@ -650,6 +655,11 @@ namespace ugraph {
         template<typename NodeManifest, typename T, std::size_t NodeIndex, std::size_t... P>
         constexpr std::array<T*, NodeManifest::template input_count<T>()>
             build_input_ptrs_array_impl(std::index_sequence<P...>) {
+            if constexpr (NodeManifest::template strict_connection<T>()) {
+                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
+                static_assert((traits::template has_input_edge<T, vid, P>() && ...),
+                    "Strict input connection missing in graph");
+            }
             if constexpr (data_count<T>() == 0) {
                 return { ((void) P, nullptr)... };
             }
@@ -671,6 +681,11 @@ namespace ugraph {
         template<typename NodeManifest, typename T, std::size_t NodeIndex, std::size_t... P>
         constexpr std::array<T*, NodeManifest::template output_count<T>()>
             build_output_ptrs_array_impl(std::index_sequence<P...>) {
+            if constexpr (NodeManifest::template strict_connection<T>()) {
+                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
+                static_assert((traits::template has_output_edge<T, vid, P>() && ...),
+                    "Strict output connection missing in graph");
+            }
             if constexpr (data_count<T>() == 0) {
                 return { ((void) P, nullptr)... };
             }

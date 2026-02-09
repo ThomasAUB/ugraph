@@ -4,12 +4,6 @@
 #include <string>
 #include <iostream>
 #include <vector>
-// uMesh
-/*
-struct MyData1 {
-    int mVal;
-};
-*/
 
 using MyData1 = int;
 
@@ -36,13 +30,8 @@ struct Source {
     >;
 
     void process(ugraph::NodeContext<Manifest>& ctx) {
-
         ctx.output<MyData1>() = 1;
-        //ctx.get<MyData1>().output<1>() = 14;
-
         std::cout << "source 0 : " << ctx.output<MyData1>() << std::endl;
-        //std::cout << "source 1 : " << ctx.get<MyData1>().output<1>() << std::endl;
-
         ctx.output<MyEvent>().push_back(789);
     }
 
@@ -92,13 +81,48 @@ TEST_CASE("type name test") {
         srcNode.output<MyEvent, 0>() >> sinkNode.input<MyEvent, 0>()
     );
 
-    std::cout << "data1 " << graph.data_count<MyData1>() << std::endl;
-    std::cout << "events " << graph.data_count<MyEvent>() << std::endl;
-
     graph.for_each(
         [] (auto& n, auto& ctx) {
             n.process(ctx);
         }
     );
+
+
+
+}
+
+TEST_CASE("graph print output") {
+
+    Source src;
+    Module1 m1;
+    Sink sink;
+
+    auto srcNode = ugraph::make_node<100>(src);
+    auto m1Node = ugraph::make_node<101>(m1);
+    auto sinkNode = ugraph::make_node<102>(sink);
+
+    ugraph::Graph graph(
+        srcNode.output<MyData1, 0>() >> m1Node.input<MyData1, 0>(),
+        m1Node.output<MyData1, 0>() >> sinkNode.input<MyData1, 0>(),
+        srcNode.output<MyData1, 0>() >> sinkNode.input<MyData1, 1>(),
+        srcNode.output<MyEvent, 0>() >> sinkNode.input<MyEvent, 0>()
+    );
+
+    std::ostringstream oss;
+    graph.print(oss);
+
+    const std::string expected =
+        "```mermaid\n"
+        "flowchart LR\n"
+        "100(Source 100)\n"
+        "101(Module1 101)\n"
+        "102(Sink 102)\n"
+        "100 --> 101\n"
+        "101 --> 102\n"
+        "100 --> 102\n"
+        "100 --> 102\n"
+        "```\n";
+
+    CHECK(oss.str() == expected);
 
 }

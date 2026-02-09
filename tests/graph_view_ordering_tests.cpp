@@ -6,7 +6,7 @@
 // Tests validating basic Graph ordering, fork-join shape, and for_each/apply equivalence.
 
 struct LStageA { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; const char* name; int i = 0; };
-struct LStageB { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 1, 1> >; const char* name; int i = 0; };
+struct LStageB { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 1, 1, false> >; const char* name; int i = 0; };
 struct LStageC { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 1, 0> >; const char* name; int i = 0; };
 
 TEST_CASE("graph_view basic linear ordering") {

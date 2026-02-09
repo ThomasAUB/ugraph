@@ -33,11 +33,12 @@
 
 namespace ugraph {
 
-    template<typename T, std::size_t in, std::size_t out>
+    template<typename T, std::size_t in, std::size_t out, bool strict = true>
     struct IO {
         using type = T;
         static constexpr std::size_t input_count = in;
         static constexpr std::size_t output_count = out;
+        static constexpr bool strict_connection = strict;
     };
 
     namespace detail {
@@ -47,13 +48,15 @@ namespace ugraph {
             using type = io_t;
             static constexpr std::size_t input_count = 1;
             static constexpr std::size_t output_count = 1;
+            static constexpr bool strict_connection = false;
         };
 
-        template<typename T, std::size_t in, std::size_t out>
-        struct io_traits<IO<T, in, out>> {
+        template<typename T, std::size_t in, std::size_t out, bool strict>
+        struct io_traits<IO<T, in, out, strict>> {
             using type = T;
             static constexpr std::size_t input_count = in;
             static constexpr std::size_t output_count = out;
+            static constexpr bool strict_connection = strict;
         };
 
         template<typename T, typename List>
@@ -106,6 +109,13 @@ namespace ugraph {
             static_assert(contains<T>, "Type not declared in Manifest");
             using spec = typename detail::io_entry_for<T, specs_list>::type;
             return detail::io_traits<spec>::output_count;
+        }
+
+        template<typename T>
+        static constexpr bool strict_connection() {
+            static_assert(contains<T>, "Type not declared in Manifest");
+            using spec = typename detail::io_entry_for<T, specs_list>::type;
+            return detail::io_traits<spec>::strict_connection;
         }
 
         template<std::size_t I>

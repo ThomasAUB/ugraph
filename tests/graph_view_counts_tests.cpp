@@ -7,7 +7,7 @@
 // Create small module types that expose a Manifest suitable for Graph
 
 struct JoinModule {
-    using Manifest = ugraph::Manifest< ugraph::IO<int, 2, 1> >;
+    using Manifest = ugraph::Manifest< ugraph::IO<int, 2, 1, false> >;
     void process(ugraph::NodeContext<Manifest>&) {}
 };
 
