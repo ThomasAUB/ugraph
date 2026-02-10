@@ -28,7 +28,7 @@
 #pragma once
 
 #include <cstddef>
-#include "link.hpp"
+#include <utility>
 
 namespace ugraph {
 
@@ -50,8 +50,6 @@ namespace ugraph {
     struct NodePortTag {
         static constexpr std::size_t id() { return _id; }
         static constexpr std::size_t priority() { return _priority; }
-        using module_type = _module_t;
-
         static constexpr std::size_t input_count() { return _input_count; }
         static constexpr std::size_t output_count() { return _output_count; }
 
@@ -59,66 +57,90 @@ namespace ugraph {
         struct Port {
             using node_type = NodePortTag<_id, _module_t, _input_count, _output_count, _priority>;
             static constexpr std::size_t index() { return idx; }
+            constexpr Port(_module_t& module) : mModule(&module) {}
+            constexpr _module_t& module() const { return *mModule; }
+        protected:
+            _module_t* mModule;
         };
 
-        template<std::size_t index>
-        using InputPort = Port<index>;
-
-        template<std::size_t index>
-        using OutputPort = Port<index>;
+        using module_type = _module_t;
     };
 
 
     template<std::size_t _id, typename module_t, typename manifest_t, std::size_t _priority = 0>
-    class Node {
-    public:
+    struct Node {
+
         using module_type = module_t;
         static constexpr std::size_t id() { return _id; }
         static constexpr std::size_t priority() { return _priority; }
 
         constexpr Node(module_type& module) : mModule(module) {}
-
         constexpr module_type& module() { return mModule; }
         constexpr const module_type& module() const { return mModule; }
 
         template<typename T>
-        using NodeType = NodePortTag<_id, module_type,
+        using NodeType = NodePortTag<
+            _id,
+            module_type,
             manifest_t::template input_count<T>(),
             manifest_t::template output_count<T>(),
-            _priority>;
+            _priority
+        >;
 
         template<typename T, std::size_t _index>
-        struct InputPort : NodeType<T>::template InputPort<_index> {
-            using data_type = T;
-            constexpr InputPort(Node& n) : mNode(n) {}
-            Node& mNode;
-        };
+        using InputPort = typename NodeType<T>::template Port<_index>;
 
         template<typename T, std::size_t _index>
-        struct OutputPort : NodeType<T>::template OutputPort<_index> {
+        struct OutputPort : NodeType<T>::template Port<_index> {
             using data_type = T;
-            constexpr OutputPort(Node& n) : mNode(n) {}
-            Node& mNode;
-
-            template<typename other_port_t>
-            constexpr auto operator >> (const other_port_t& p) const {
-                return Link<OutputPort<T, _index>, other_port_t>(*this, p);
-            }
+            constexpr OutputPort(Node& node) :
+                NodeType<T>::template Port<_index>(node.module()) {}
         };
 
-        template<typename T, std::size_t I = 0>
-        constexpr auto input() const {
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            return InputPort<T, I>(const_cast<Node&>(*this));
-        }
+        // single input
+        template<typename T>
+        constexpr auto input() { return make_port<T, 0, false, true>(); }
 
-        template<typename T, std::size_t I = 0>
-        constexpr auto output() const {
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            return OutputPort<T, I>(const_cast<Node&>(*this));
-        }
+        // single output
+        template<typename T>
+        constexpr auto output() { return make_port<T, 0, true, true>(); }
+
+        template<typename T, std::size_t I>
+        constexpr auto input() { return make_port<T, I, false, false>(); }
+
+        template<typename T, std::size_t I>
+        constexpr auto output() { return make_port<T, I, true, false>(); }
 
     private:
+
+        template<typename T, std::size_t I, bool is_output, bool enforce_single>
+        constexpr auto make_port() {
+
+            using input_port_t = InputPort<T, I>;
+            using output_port_t = OutputPort<T, I>;
+
+            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
+
+            if constexpr (is_output) {
+                if constexpr (enforce_single) {
+                    static_assert(manifest_t::template output_count<T>() == 1, "Undefined output index");
+                }
+                else {
+                    static_assert(manifest_t::template output_count<T>() > I, "Invalid output index");
+                }
+                return output_port_t { *this };
+            }
+            else {
+                if constexpr (enforce_single) {
+                    static_assert(manifest_t::template input_count<T>() == 1, "Undefined input index");
+                }
+                else {
+                    static_assert(manifest_t::template input_count<T>() > I, "Invalid input index");
+                }
+                return input_port_t { mModule };
+            }
+        }
+
         module_type& mModule;
     };
 
@@ -130,6 +152,15 @@ namespace ugraph {
     >
     constexpr auto make_node(module_t& module) {
         return Node<id, module_t, manifest_t, _priority>(module);
+    }
+
+    template<
+        typename out_port_t,
+        typename in_port_t,
+        typename = std::void_t<typename out_port_t::data_type, typename in_port_t::node_type>
+    >
+    constexpr auto operator >> (const out_port_t& out, const in_port_t& in) {
+        return std::pair<out_port_t, in_port_t>{ out, in };
     }
 
 } // namespace ugraph

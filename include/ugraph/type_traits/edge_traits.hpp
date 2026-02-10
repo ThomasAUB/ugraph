@@ -1,4 +1,4 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * MIT License                                                                     *
  *                                                                                 *
  * Copyright (c) 2026 Thomas AUBERT                                                *
@@ -27,10 +27,9 @@
 
 #pragma once
 
-#include <type_traits>
 #include <cstddef>
 
-namespace ugraph {
+namespace ugraph::detail {
 
     template<typename E>
     struct edge_traits {
@@ -46,3 +45,4 @@ namespace ugraph {
     };
 
 } // namespace ugraph
+

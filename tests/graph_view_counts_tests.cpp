@@ -8,22 +8,22 @@
 
 struct JoinModule {
     using Manifest = ugraph::Manifest< ugraph::IO<int, 2, 1, false> >;
-    void process(ugraph::NodeContext<Manifest>&) {}
+    void process(ugraph::Context<Manifest>&) {}
 };
 
 struct A_src {
     using Manifest = ugraph::Manifest< ugraph::IO<int, 0, 1> >;
-    void process(ugraph::NodeContext<Manifest>&) {}
+    void process(ugraph::Context<Manifest>&) {}
 };
 
 struct A_mid {
     using Manifest = ugraph::Manifest< ugraph::IO<int, 1, 1> >;
-    void process(ugraph::NodeContext<Manifest>&) {}
+    void process(ugraph::Context<Manifest>&) {}
 };
 
 struct A_sink {
     using Manifest = ugraph::Manifest< ugraph::IO<int, 1, 0> >;
-    void process(ugraph::NodeContext<Manifest>&) {}
+    void process(ugraph::Context<Manifest>&) {}
 };
 
 

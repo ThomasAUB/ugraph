@@ -32,10 +32,10 @@
 #include <cstddef>
 #include <utility>
 #include <type_traits>
-#include "node_tag.hpp"
-#include "type_list.hpp"
-#include "edge_traits.hpp"
+
 #include "graph_printer.hpp"
+#include "type_traits/type_list.hpp"
+#include "type_traits/edge_traits.hpp"
 
 namespace ugraph {
 
@@ -69,7 +69,6 @@ namespace ugraph {
         template<typename List, typename... Vs>
         struct append_type_list<List, detail::type_list<Vs...>> { using type = typename append_types<List, Vs...>::type; };
 
-        // When a vertex (NodeTag) wraps a nested Topology as its module_type,
         // expand the inner topology's vertex types into the parent list.
         template<typename List, typename V, bool = has_vertex_types_list<typename V::module_type>::value>
         struct list_add_vertex {
@@ -83,8 +82,8 @@ namespace ugraph {
 
         template<typename List, typename Edge>
         struct list_add_edge_vertices {
-            using src_t = typename edge_traits<Edge>::src_vertex_t;
-            using dst_t = typename edge_traits<Edge>::dst_vertex_t;
+            using src_t = typename detail::edge_traits<Edge>::src_vertex_t;
+            using dst_t = typename detail::edge_traits<Edge>::dst_vertex_t;
             using with_src = typename list_add_vertex<List, src_t>::type;
             using type = typename list_add_vertex<with_src, dst_t>::type;
         };
@@ -93,8 +92,8 @@ namespace ugraph {
         struct list_add_vertex_no_expand { using type = typename list_append_unique<List, V>::type; };
         template<typename List, typename Edge>
         struct list_add_edge_vertices_no_expand {
-            using src_t = typename edge_traits<Edge>::src_vertex_t;
-            using dst_t = typename edge_traits<Edge>::dst_vertex_t;
+            using src_t = typename detail::edge_traits<Edge>::src_vertex_t;
+            using dst_t = typename detail::edge_traits<Edge>::dst_vertex_t;
             using with_src = typename list_add_vertex_no_expand<List, src_t>::type;
             using type = typename list_add_vertex_no_expand<with_src, dst_t>::type;
         };
@@ -225,8 +224,8 @@ namespace ugraph {
 
         template<typename Edge>
         struct expanded_edge_size {
-            using S = typename edge_traits<Edge>::src_vertex_t;
-            using D = typename edge_traits<Edge>::dst_vertex_t;
+            using S = typename detail::edge_traits<Edge>::src_vertex_t;
+            using D = typename detail::edge_traits<Edge>::dst_vertex_t;
             static constexpr std::size_t s = has_vertex_types_list<typename S::module_type>::value ? module_exit_count<typename S::module_type>::value : 1;
             static constexpr std::size_t d = has_vertex_types_list<typename D::module_type>::value ? module_entry_count<typename D::module_type>::value : 1;
             static constexpr std::size_t value = s * d;
@@ -252,8 +251,8 @@ namespace ugraph {
 
         template<typename Edge, std::size_t K>
         static constexpr std::pair<std::size_t, std::size_t> pair_for_edge_const() {
-            using S = typename edge_traits<Edge>::src_vertex_t;
-            using D = typename edge_traits<Edge>::dst_vertex_t;
+            using S = typename detail::edge_traits<Edge>::src_vertex_t;
+            using D = typename detail::edge_traits<Edge>::dst_vertex_t;
             constexpr bool S_is_module = has_vertex_types_list<typename S::module_type>::value;
             constexpr bool D_is_module = has_vertex_types_list<typename D::module_type>::value;
             if constexpr (S_is_module && D_is_module) {

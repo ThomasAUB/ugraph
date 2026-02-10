@@ -36,14 +36,6 @@ Optional priority parameter:
 
 * `Priority` (default `0`) is a compile-time tie-breaker used by ordering algorithms — larger values run earlier when multiple nodes are otherwise unordered.
 
-### Link
-
-```cpp
-Link<Src, Dst>
-```
-
-Declares a dependency: `Src` must come before `Dst`. Collect links as template parameters of `Topology`.
-
 ### Example
 
 Enforcing subsystem startup order at compile time:
@@ -64,10 +56,10 @@ using logger_t   = ugraph::NodeTag<4, Logger>;
 // Dependencies (Src -> Dst)
 using AppTopo =
 ugraph::Topology<
-    ugraph::Link<config_t,   logger_t>,   // Config before Logger
-    ugraph::Link<config_t,   database_t>, // Config before Database
-    ugraph::Link<logger_t,   database_t>, // Logger before Database
-    ugraph::Link<database_t, server_t>    // Database before Server
+    std::pair<config_t,   logger_t>,   // Config before Logger
+    std::pair<config_t,   database_t>, // Config before Database
+    std::pair<logger_t,   database_t>, // Logger before Database
+    std::pair<database_t, server_t>    // Database before Server
 >;
 
 static_assert(!AppTopo::is_cyclic());
@@ -77,6 +69,11 @@ static_assert(AppTopo::size() == 4);
 // Execute in safe order
 AppTopo::apply([](auto... tag){
     (decltype(tag)::module_type::init(), ...);
+});
+
+// Or
+AppTopo::for_each([](auto tag){ 
+    decltype(tag)::module_type::init();
 });
 ```
 
@@ -137,18 +134,48 @@ Builds a *runtime* data-graph of nodes with:
 ```cpp
 // User modules expose a `Manifest` describing their IO counts.
 struct Source {
-    using Manifest = ugraph::Manifest< ugraph::IO<int, 0, 1> >; // 0 in, 1 out
-    void process(ugraph::NodeContext<Manifest>&) {}
+
+    using Manifest = 
+        ugraph::Manifest<
+            ugraph::IO<int, 0, 1> // 0 in, 1 out
+        >;
+
+    void process(ugraph::Context<Manifest>& ctx) {
+        ctx.output<int>() = 5;
+    }
 };
 
 struct Merger {
-    using Manifest = ugraph::Manifest< ugraph::IO<int, 2, 1> >; // 2 in, 1 out
-    void process(ugraph::NodeContext<Manifest>&) {}
+
+    using Manifest = 
+        ugraph::Manifest<
+            ugraph::IO<int, 2, 1> // 2 in, 1 out
+        >;
+
+    void process(ugraph::Context<Manifest>& ctx) {
+        
+        ctx.output<int>() = ctx.input<int>(0) + ctx.input<int>(1);
+
+        // or
+        // int out = 0;
+        // for(auto& i : ctx.inputs<int>()) {
+        //     out += i;
+        // }
+        // ctx.output<int>() = out;
+    }
 };
 
 struct Sink {
-    using Manifest = ugraph::Manifest< ugraph::IO<int, 1, 0> >; // 1 in, 0 out
-    void process(ugraph::NodeContext<Manifest>&) {}
+
+    using Manifest = 
+        ugraph::Manifest<
+            ugraph::IO<int, 1, 0> // 1 in, 0 out
+        >;
+
+    void process(ugraph::Context<Manifest>& ctx) {
+        std::cout << ctx.input<int>();
+    }
+
 };
 
 Source src;
@@ -173,7 +200,7 @@ auto g = ugraph::Graph(
 
 ```cpp
 // Run each module's processing function. `for_each` provides both
-// the module instance and its `NodeContext` so you can access inputs/outputs.
+// the module instance and its `Context` so you can access inputs/outputs.
 g.for_each([](auto& module, auto& ctx){
     module.process(ctx);
 });
@@ -222,13 +249,12 @@ This compile-time enforcement helps catch wiring mistakes early in pipelines.
 
 ## Core Concepts
 
-| Concept        | Type                          | Purpose                                |
-|----------------|-------------------------------|----------------------------------------|
-| Compile-time id| `NodeTag<ID, Module>`         | ID + payload type (no storage)         |
-| Runtime node   | `Node<ID, Module, In, Out>`   | Wraps user instance + port counts      |
-| Edge (link)    | `Link<Src, Dst>`              | Declares ordering dependency           |
-| Static graph   | `Topology<Link...>`           | Ordering, cycle check, visitation      |
-| Runtime view   | `Graph<Link...>`          | Traversal + minimal buffer slot reuse  |
+| Concept        | Type                                   | Purpose                               |
+|----------------|----------------------------------------|---------------------------------------|
+| Compile-time id| `NodeTag<ID, Module, Priority>`        | ID + payload type (no storage)        |
+| Runtime node   | `Node<ID, Module, Manifest, Priority>` | Wraps user instance + port counts     |
+| Static graph   | `Topology<Edges...>`                   | Ordering, cycle check, visitation     |
+| Runtime view   | `Graph<Edges...>`                      | Traversal + minimal buffer slot reuse |
 
 ---
 

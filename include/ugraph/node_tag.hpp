@@ -39,8 +39,10 @@ namespace ugraph {
     struct NodeTag {
         static constexpr std::size_t id() { return _id; }
         static constexpr std::size_t priority() { return _priority; }
+        static constexpr std::size_t index() { return 0; }
         using module_type = _module_t;
         using node_type = NodeTag<_id, _module_t>;
     };
 
 } // namespace ugraph
+

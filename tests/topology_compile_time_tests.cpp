@@ -34,11 +34,11 @@ namespace {
 
     // Define a compile-time graph (edges expressed as Link<Src,Dst>)
     using CTGraph = ugraph::Topology<
-        ugraph::Link<V2, V4>,
-        ugraph::Link<V2, V3>,
-        ugraph::Link<V1, V2>,
-        ugraph::Link<V1, V3>,
-        ugraph::Link<V1, V4>
+        std::pair<V2, V4>,
+        std::pair<V2, V3>,
+        std::pair<V1, V2>,
+        std::pair<V1, V3>,
+        std::pair<V1, V4>
     >;
 
     static_assert(CTGraph::size() == 4, "Unexpected vertex count");
@@ -84,8 +84,8 @@ TEST_CASE("topology tag apply/for_each runtime echo") {
     using D3 = ugraph::NodeTag<103, F3>;
 
     using G = ugraph::Topology<
-        ugraph::Link<D2, D3>,
-        ugraph::Link<D1, D2>
+        std::pair<D2, D3>,
+        std::pair<D1, D2>
     >;
 
     static_assert(G::size() == 3);

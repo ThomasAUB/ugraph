@@ -18,7 +18,7 @@ struct Module1 {
     int last_in = 0;
     int last_out = 0;
 
-    void process(ugraph::NodeContext<Manifest>& ctx) {
+    void process(ugraph::Context<Manifest>& ctx) {
         last_in = ctx.input<MyData1>();
         last_out = last_in + 1;
         ctx.output<MyData1>() = last_out;
@@ -36,7 +36,7 @@ struct Source {
     int out_value = 1;
     int event_value = 789;
 
-    void process(ugraph::NodeContext<Manifest>& ctx) {
+    void process(ugraph::Context<Manifest>& ctx) {
         ctx.output<MyData1>() = out_value;
         ctx.output<MyEvent>().push_back(event_value);
     }
@@ -54,7 +54,7 @@ struct Sink {
     bool event_seen = false;
     int event_value = -1;
 
-    void process(ugraph::NodeContext<Manifest>& ctx) {
+    void process(ugraph::Context<Manifest>& ctx) {
 
         inputs.clear();
         for (auto& in : ctx.inputs<MyData1>()) {
@@ -80,10 +80,10 @@ TEST_CASE("graph data propagation") {
     auto sinkNode = ugraph::make_node<102>(sink);
 
     ugraph::Graph graph(
-        srcNode.output<MyData1, 0>() >> m1Node.input<MyData1, 0>(),
-        m1Node.output<MyData1, 0>() >> sinkNode.input<MyData1, 0>(),
-        srcNode.output<MyData1, 0>() >> sinkNode.input<MyData1, 1>(),
-        srcNode.output<MyEvent, 0>() >> sinkNode.input<MyEvent, 0>()
+        srcNode.output<MyData1>() >> m1Node.input<MyData1>(),
+        m1Node.output<MyData1>() >> sinkNode.input<MyData1, 0>(),
+        srcNode.output<MyData1>() >> sinkNode.input<MyData1, 1>(),
+        srcNode.output<MyEvent>() >> sinkNode.input<MyEvent, 0>()
     );
 
     graph.for_each(
@@ -115,10 +115,10 @@ TEST_CASE("graph print output") {
     auto sinkNode = ugraph::make_node<102>(sink);
 
     ugraph::Graph graph(
-        srcNode.output<MyData1, 0>() >> m1Node.input<MyData1, 0>(),
-        m1Node.output<MyData1, 0>() >> sinkNode.input<MyData1, 0>(),
-        srcNode.output<MyData1, 0>() >> sinkNode.input<MyData1, 1>(),
-        srcNode.output<MyEvent, 0>() >> sinkNode.input<MyEvent, 0>()
+        srcNode.output<MyData1>() >> m1Node.input<MyData1>(),
+        m1Node.output<MyData1>() >> sinkNode.input<MyData1, 0>(),
+        srcNode.output<MyData1>() >> sinkNode.input<MyData1, 1>(),
+        srcNode.output<MyEvent>() >> sinkNode.input<MyEvent>()
     );
 
     std::ostringstream oss;

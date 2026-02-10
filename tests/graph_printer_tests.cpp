@@ -37,9 +37,9 @@ TEST_CASE("graph view print test") {
     using sink = ugraph::NodeTag<104, Stage>;
 
     using topo_t = ugraph::Topology<
-        ugraph::Link<src2, m>,
-        ugraph::Link<m, sink>,
-        ugraph::Link<src1, m>
+        std::pair<src2, m>,
+        std::pair<m, sink>,
+        std::pair<src1, m>
     >;
 
     {
@@ -84,9 +84,9 @@ TEST_CASE("topology print test") {
     using sink = ugraph::NodeTag<104, Stage>;
 
     using topo_t = ugraph::Topology<
-        ugraph::Link<src2, m>,
-        ugraph::Link<m, sink>,
-        ugraph::Link<src1, m>
+        std::pair<src2, m>,
+        std::pair<m, sink>,
+        std::pair<src1, m>
     >;
 
     {
@@ -127,10 +127,9 @@ TEST_CASE("split topology print test") {
     using sec2 = ugraph::NodeTag<105, Stage>;
 
     using topo_t = ugraph::Topology<
-        ugraph::Link<src2, m>,
-        ugraph::Link<src1, m>,
-
-        ugraph::Link<sec1, sec2>
+        std::pair<src2, m>,
+        std::pair<src1, m>,
+        std::pair<sec1, sec2>
     >;
 
     {

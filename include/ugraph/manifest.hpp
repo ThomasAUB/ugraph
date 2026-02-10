@@ -29,7 +29,7 @@
 
 #include <cstddef>
 #include <type_traits>
-#include "type_list.hpp"
+#include "type_traits/type_list.hpp"
 
 namespace ugraph {
 
@@ -40,6 +40,9 @@ namespace ugraph {
         static constexpr std::size_t output_count = out;
         static constexpr bool strict_connection = strict;
     };
+
+    template<typename... ios_t>
+    struct Manifest;
 
     namespace detail {
 

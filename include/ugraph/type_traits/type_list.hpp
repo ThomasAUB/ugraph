@@ -72,3 +72,4 @@ namespace ugraph::detail {
     struct type_list_prepend<T, type_list<Ts...>> { using type = type_list<T, Ts...>; };
 
 } // namespace ugraph::detail
+

@@ -13,9 +13,9 @@ TEST_CASE("topology priority tie-breaking") {
     P_B b { "B" };
     P_C c { "C" };
 
-    struct P_A_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; void process(ugraph::NodeContext<Manifest>&) {} };
-    struct P_B_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; void process(ugraph::NodeContext<Manifest>&) {} };
-    struct P_C_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 2, 0> >; void process(ugraph::NodeContext<Manifest>&) {} };
+    struct P_A_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; void process(ugraph::Context<Manifest>&) {} };
+    struct P_B_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; void process(ugraph::Context<Manifest>&) {} };
+    struct P_C_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 2, 0> >; void process(ugraph::Context<Manifest>&) {} };
 
     P_A_d ad { "A" };
     P_B_d bd { "B" };

@@ -18,7 +18,7 @@ namespace {
     using IC = ugraph::NodeTag<1003, C>;
 
     // inner topology
-    using Inner = ugraph::Topology< ugraph::Link<IA, IB>, ugraph::Link<IB, IC> >;
+    using Inner = ugraph::Topology< std::pair<IA, IB>, std::pair<IB, IC> >;
 
     // Declare a node whose module_type is the Inner topology
     using NestedNode = ugraph::NodeTag<2000, Inner>;
@@ -26,7 +26,7 @@ namespace {
     using X = ugraph::NodeTag<3001, A>;
 
     // Outer topology uses NestedNode as a vertex
-    using Outer = ugraph::Topology< ugraph::Link<NestedNode, X>, ugraph::Link<X, NestedNode> >;
+    using Outer = ugraph::Topology< std::pair<NestedNode, X>, std::pair<X, NestedNode> >;
 
     static_assert(Inner::size() == 3, "Inner size expected");
     static_assert(Outer::size() >= 2, "Outer has at least outer nodes");
