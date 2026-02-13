@@ -15,35 +15,11 @@ namespace {
 
         AudioBuffer() = default;
 
-        AudioBuffer(float* data, std::size_t size) :
-            mData(data), mSize(size) {}
+        AudioBuffer(float* d, std::size_t s) : mData(d), mSize(s) {}
 
         template<typename container_t>
-        AudioBuffer(container_t& c) :
-            mData(c.data()), mSize(c.size()) {}
+        AudioBuffer(container_t& c) : mData(c.data()), mSize(c.size()) {}
 
-        auto begin() { return mData; }
-        auto end() { return mData + mSize; }
-
-        auto begin() const { return mData; }
-        auto end() const { return mData + mSize; }
-
-        std::size_t size() const { return mSize; }
-
-        float& operator [](std::size_t i) {
-            return mData[i];
-        }
-
-        const float& operator [](std::size_t i) const {
-            return mData[i];
-        }
-
-        void copy_from(const AudioBuffer& o) {
-            const std::size_t n = (mSize < o.mSize) ? mSize : o.mSize;
-            for (std::size_t i = 0; i < n; ++i) mData[i] = o.mData[i];
-        }
-
-    private:
         float* mData = nullptr;
         std::size_t mSize = 0;
     };
@@ -56,9 +32,7 @@ namespace {
         float value { 0.f };
 
         void process(ugraph::Context<Manifest>& ctx) {
-            for (auto& sample : ctx.output<AudioBuffer>()) {
-                sample = value;
-            }
+            process(ctx.output<AudioBuffer>().mData, ctx.output<AudioBuffer>().mSize);
         }
 
         // Pointer-based helper for manual path in tests
@@ -74,15 +48,12 @@ namespace {
         using Manifest = ugraph::Manifest< ugraph::IO<AudioBuffer, 2, 1> >;
 
         void process(ugraph::Context<Manifest>& ctx) {
-
-            auto& in1 = ctx.input<AudioBuffer>(0);
-            auto& in2 = ctx.input<AudioBuffer>(1);
-            auto& out = ctx.output<AudioBuffer>();
-
-            for (std::size_t i = 0; i < out.size(); ++i) {
-                out[i] = in1[i] + in2[i];
-            }
-
+            process(
+                ctx.input<AudioBuffer>(0).mData,
+                ctx.input<AudioBuffer>(1).mData,
+                ctx.output<AudioBuffer>().mData,
+                ctx.output<AudioBuffer>().mSize
+            );
         }
 
         // Pointer-based helper for manual path in tests
@@ -102,11 +73,7 @@ namespace {
         float gain { 1.f };
 
         void process(ugraph::Context<Manifest>& ctx) {
-            auto& in = ctx.input<AudioBuffer>();
-            auto& out = ctx.output<AudioBuffer>();
-            for (std::size_t i = 0; i < out.size(); ++i) {
-                out[i] = in[i] * gain;
-            }
+            process(ctx.input<AudioBuffer>().mData, ctx.output<AudioBuffer>().mData, ctx.output<AudioBuffer>().mSize);
         }
 
         // Pointer-based helper for manual path in tests
@@ -127,11 +94,7 @@ namespace {
         float sum { 0.f };
 
         void process(ugraph::Context<Manifest>& ctx) {
-            sum = 0.f;
-            for (auto s : ctx.input<AudioBuffer>()) {
-                sum += s;
-            }
-            last_sample = ctx.input<AudioBuffer>()[0];
+            process(ctx.input<AudioBuffer>().mData, ctx.input<AudioBuffer>().mSize);
         }
 
         // Pointer-based helper for manual path in tests
