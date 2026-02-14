@@ -247,6 +247,36 @@ When `strict` is `true` the `Graph` will `static_assert` during construction if 
 
 This compile-time enforcement helps catch wiring mistakes early in pipelines.
 
+
+#### Manual binding (unconnected IO)
+
+If a node's ports are not connected through the `Graph` you can still provide inputs or capture outputs manually.
+
+- Bind a graph port to local storage using `graph.bind(...)` (useful when wiring external buffers to node inputs/outputs):
+
+```cpp
+// bind an external variable to a node input or output
+int inData = 0;
+float outData = 0;
+graph.bind(entryNode.input<int>(), inData);
+graph.bind(outputNode.output<float>(), outData);
+```
+
+- Or run a single module manually by constructing a `Context` and calling `set_ios` to point its input/output storage:
+
+```cpp
+using manifest_t = Manifest<
+    IO<int, 2, 1>
+>;
+ugraph::Context<manifest_t> ctx;
+int inData1, inData2;
+int outData;
+ctx.set_ios(std::array{ &inData1, &inData2, &outData });
+```
+
+These options let you supply or capture data for nodes that are intentionally left unconnected in the graph.
+
+
 ## Core Concepts
 
 | Concept        | Type                                   | Purpose                               |
