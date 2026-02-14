@@ -295,7 +295,7 @@ TEST_CASE("audio graph pipeline vs manual performance ratio") {
 
     std::cout << "pipe_ns=" << pipe_ns << " manual_ns=" << manual_ns << " ratio=" << r << std::endl;
 
-    CHECK(r < 3);
+    CHECK(r < 1.5);
 
     (void) consume; // silence unused warning for volatile accumulation
 }
