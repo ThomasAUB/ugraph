@@ -32,47 +32,47 @@ namespace ugraph {
         using data_array_t = std::array<data_t*, input_count<data_t>() + output_count<data_t>()>;
 
         template<typename data_t>
-        constexpr const data_t& input() const {
+        constexpr inline const data_t& input() const {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             static_assert(input_count<data_t>() == 1, "This overload is only valid for single-input types");
             return *std::get<data_array_t<data_t>>(mDataPtrsTuple)[0];
         }
 
         template<typename data_t>
-        constexpr data_t& output() {
+        constexpr inline data_t& output() {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             static_assert(output_count<data_t>() == 1, "This overload is only valid for single-output types");
             return *std::get<data_array_t<data_t>>(mDataPtrsTuple)[input_count<data_t>()];
         }
 
         template<typename data_t>
-        constexpr const data_t& input(std::size_t port) const {
+        constexpr inline const data_t& input(std::size_t port) const {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             return *std::get<data_array_t<data_t>>(mDataPtrsTuple)[port];
         }
 
         template<typename data_t>
-        constexpr data_t& output(std::size_t port) {
+        constexpr inline data_t& output(std::size_t port) {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             return *std::get<data_array_t<data_t>>(mDataPtrsTuple)[input_count<data_t>() + port];
         }
 
         template<typename data_t>
-        constexpr auto inputs() const {
+        constexpr inline auto inputs() const {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             static_assert(input_count<data_t>() > 0, "No input ports for this type");
             return DataSpan<const data_t>(std::get<data_array_t<data_t>>(mDataPtrsTuple).data(), input_count<data_t>());
         }
 
         template<typename data_t>
-        constexpr auto outputs() {
+        constexpr inline auto outputs() {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             static_assert(output_count<data_t>() > 0, "No output ports for this type");
             return DataSpan<data_t>(std::get<data_array_t<data_t>>(mDataPtrsTuple).data() + input_count<data_t>(), output_count<data_t>());
         }
 
         template<typename data_t, std::size_t I = 0>
-        constexpr bool has_input() const {
+        constexpr inline bool has_input() const {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             if constexpr (I >= input_count<data_t>()) {
                 return false;
@@ -83,7 +83,7 @@ namespace ugraph {
         }
 
         template<typename data_t, std::size_t I = 0>
-        constexpr bool has_output() const {
+        constexpr inline bool has_output() const {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             if constexpr (I >= output_count<data_t>()) {
                 return false;
