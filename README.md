@@ -108,12 +108,12 @@ using IA = ugraph::NodeTag<1001, A>;
 using IB = ugraph::NodeTag<1002, B>;
 using IC = ugraph::NodeTag<1003, C>;
 
-using Inner = ugraph::Topology< ugraph::Link<IA, IB>, ugraph::Link<IB, IC> >;
+using Inner = ugraph::Topology< std::pair<IA, IB>, std::pair<IB, IC> >;
 using NestedNode = ugraph::NodeTag<2000, Inner>;
 using X = ugraph::NodeTag<3001, A>;
 
 // Outer topology that references the nested module
-using Outer = ugraph::Topology< ugraph::Link<NestedNode, X>, ugraph::Link<X, NestedNode> >;
+using Outer = ugraph::Topology< std::pair<NestedNode, X>, std::pair<X, NestedNode> >;
 
 // At compile time `Outer` is equivalent to declaring the inner nodes and edges directly:
 // IA -> IB -> IC -> 3001 -> IA
@@ -158,7 +158,7 @@ struct Merger {
 
         // or
         // int out = 0;
-        // for(auto& i : ctx.inputs<int>()) {
+        // for(const auto& i : ctx.inputs<int>()) {
         //     out += i;
         // }
         // ctx.output<int>() = out;

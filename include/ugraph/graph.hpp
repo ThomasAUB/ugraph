@@ -36,8 +36,8 @@
 #include "manifest.hpp"
 #include "topology.hpp"
 #include "graph_printer.hpp"
-#include "type_traits/edge_traits.hpp"
 #include "type_traits/type_list.hpp"
+#include "type_traits/edge_traits.hpp"
 #include "type_traits/graph_traits.hpp"
 
 namespace ugraph {

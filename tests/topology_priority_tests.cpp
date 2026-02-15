@@ -5,14 +5,6 @@
 
 TEST_CASE("topology priority tie-breaking") {
 
-    struct P_A { const char* name; };
-    struct P_B { const char* name; };
-    struct P_C { const char* name; };
-
-    P_A a { "A" };
-    P_B b { "B" };
-    P_C c { "C" };
-
     struct P_A_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; void process(ugraph::Context<Manifest>&) {} };
     struct P_B_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1> >; void process(ugraph::Context<Manifest>&) {} };
     struct P_C_d { const char* name; using Manifest = ugraph::Manifest< ugraph::IO<const char*, 2, 0> >; void process(ugraph::Context<Manifest>&) {} };
@@ -32,14 +24,12 @@ TEST_CASE("topology priority tie-breaking") {
 
     std::vector<char> order;
 
-
-    g.for_each([
-        &] (auto& module, auto& /* ctx */) {
-            order.push_back(module.name[0]);
+    g.for_each([&] (auto& module, auto& /* ctx */) {
+        order.push_back(module.name[0]);
         });
 
-        REQUIRE(order.size() == 3);
-        CHECK(order[0] == 'B');
-        CHECK(order[1] == 'A');
-        CHECK(order[2] == 'C');
+    REQUIRE(order.size() == 3);
+    CHECK(order[0] == 'B');
+    CHECK(order[1] == 'A');
+    CHECK(order[2] == 'C');
 }
