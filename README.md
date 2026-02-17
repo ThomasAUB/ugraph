@@ -194,6 +194,12 @@ auto g = ugraph::Graph(
     nSrc.output<int>() >> nMerger.input<int, 1>(),
     nMerger.output<int>() >> nSnk.input<int>()
 );
+
+// Instantiate runtime storage for node IO and minimal buffer slots
+decltype(g)::graph_data_t data;
+
+// Initialize internal pointers/slots for the graph
+g.init_graph_data(data);
 ```
 
 ### Executing the Pipeline
@@ -252,14 +258,14 @@ This compile-time enforcement helps catch wiring mistakes early in pipelines.
 
 If a node's ports are not connected through the `Graph` you can still provide inputs or capture outputs manually.
 
-- Bind a graph port to local storage using `graph.bind(...)` (useful when wiring external buffers to node inputs/outputs):
+- Bind a graph port to local storage using `graph.bind_input(...)` and `graph.bind_output(...)` (useful when wiring external buffers to node inputs/outputs):
 
 ```cpp
 // bind an external variable to a node input or output
 int inData = 0;
 float outData = 0;
-graph.bind(entryNode.input<int>(), inData);
-graph.bind(outputNode.output<float>(), outData);
+graph.bind_input<entryNode.id()>(inData);
+graph.bind_output<outputNode.id()>(outData);
 ```
 
 - Or run a single module manually by constructing a `Context` and calling `set_ios` to point its input/output storage:
