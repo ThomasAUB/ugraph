@@ -38,21 +38,24 @@ TEST_CASE("manual bind graph") {
         entryNode.output<input_data_t>() >> outputNode2.input<input_data_t>()
     );
 
+    decltype(graph)::graph_data_t dg;
+    graph.init_graph_data(dg);
+
     CHECK(!graph.all_ios_connected());
 
     input_data_t entry = 0;
     input_data_t output1 = 0;
     input_data_t output2 = 0;
 
-    graph.bind(entryNode.input<input_data_t>(), entry);
+    graph.bind_input<100>(entry);
 
     CHECK(!graph.all_ios_connected());
 
-    graph.bind(outputNode1.output<input_data_t>(), output1);
+    graph.bind_output<102>(output1);
 
     CHECK(!graph.all_ios_connected());
 
-    graph.bind(outputNode2.output<input_data_t>(), output2);
+    graph.bind_output<103>(output2);
 
     CHECK(graph.all_ios_connected());
 

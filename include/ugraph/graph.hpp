@@ -54,74 +54,151 @@ namespace ugraph {
 
         using manifest_t = typename traits::manifest_t;
         using modules_tuple_impl_t = typename traits::modules_tuple_t;
+
         template<std::size_t... I>
         static constexpr auto make_contexts_tuple_t(std::index_sequence<I...>) ->
             std::tuple<Context<typename node_type_at<I>::module_type::Manifest>...>;
+
         using contexts_tuple_t = decltype(make_contexts_tuple_t(std::make_index_sequence<topology_t::size()>{}));
+
+        template<std::size_t... I>
+        static constexpr auto make_graph_data_t(std::index_sequence<I...>) ->
+            std::tuple<
+            std::array<
+            typename manifest_t::template type_at<I>,
+            traits::template coloring_t<typename manifest_t::template type_at<I>>::data_count()
+            >...
+            >;
 
         modules_tuple_impl_t mModules;
         contexts_tuple_t mContexts;
-        template<std::size_t... I>
-        static constexpr auto make_data_storage_tuple_t(std::index_sequence<I...>) ->
-            std::tuple<std::array<typename manifest_t::template type_at<I>,
-            traits::template coloring_t<typename manifest_t::template type_at<I>>::data_count() >...>;
-
-        using data_storage_tuple_t = decltype(make_data_storage_tuple_t(std::make_index_sequence<manifest_t::type_count>{}));
-        data_storage_tuple_t mDataStorage {};
 
     public:
 
         using topology_type = topology_t;
 
         constexpr Graph(const edges_t&... es) :
-            mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
-            init_contexts(std::make_index_sequence<topology_t::size()>{});
-        }
+            mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {}
 
         template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
         }
 
-        template<typename T>
-        constexpr T* data() {
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            if constexpr (data_count<T>() == 0) {
-                return nullptr;
-            }
-            else {
-                constexpr std::size_t idx = manifest_t::template index<T>();
-                return std::get<idx>(mDataStorage).data();
-            }
-        }
-
-        template<typename T>
-        constexpr const T* data() const {
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
-            if constexpr (data_count<T>() == 0) {
-                return nullptr;
-            }
-            else {
-                constexpr std::size_t idx = manifest_t::template index<T>();
-                return std::get<idx>(mDataStorage).data();
-            }
-        }
-
-        template<typename T>
-        constexpr T& data_at(std::size_t i) {
-            auto ptr = data<T>();
-            return ptr[i];
-        }
-
-        template<typename T>
-        constexpr const T& data_at(std::size_t i) const {
-            auto ptr = data<T>();
-            return ptr[i];
-        }
-
-        template<typename T>
+        template<typename data_t>
         static constexpr std::size_t data_count() {
-            return traits::template coloring_t<T>::data_count();
+            return traits::template coloring_t<data_t>::data_count();
+        }
+
+        using graph_data_t = decltype(make_graph_data_t(std::make_index_sequence<manifest_t::type_count>{}));
+
+        constexpr void init_graph_data(graph_data_t& graph_data) {
+            init_graph_data_impl(graph_data, std::make_index_sequence<topology_t::size()>{});
+        }
+
+        template<std::size_t node_id, typename data_t>
+        constexpr void bind_output(data_t& data) {
+            constexpr std::size_t node_index = [] () constexpr {
+                constexpr auto ids = topology_t::ids();
+                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
+                return static_cast<std::size_t>(-1);
+                }();
+            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            using node_type = node_type_at<node_index>;
+            using node_manifest = typename node_type::module_type::Manifest;
+            static_assert(node_manifest::template contains<data_t>, "Type not declared in node Manifest");
+            constexpr std::size_t out_count = node_manifest::template output_count<data_t>();
+            static_assert(
+                out_count > 0,
+                "No output ports for this type"
+                );
+            static_assert(
+                out_count == 1,
+                "Bind_output is only valid for single-output types; use bind_output_at for multi-output types"
+                );
+            bind_output_at<node_id, 0, data_t>(data);
+        }
+
+        template<std::size_t node_id, std::size_t output_index, typename data_t>
+        constexpr void bind_output_at(data_t& data) {
+
+            constexpr std::size_t node_index = [] () constexpr {
+                constexpr auto ids = topology_t::ids();
+                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
+                return static_cast<std::size_t>(-1);
+                }();
+            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            using node_type = node_type_at<node_index>;
+            using node_manifest = typename node_type::module_type::Manifest;
+            static_assert(node_manifest::template contains<data_t>, "Type not declared in node Manifest");
+            constexpr std::size_t out_count = node_manifest::template output_count<data_t>();
+            static_assert(output_index < out_count, "Invalid output index for this node/type");
+
+            // Ensure the specific output port is not already connected in the graph
+            constexpr bool is_connected = (
+                traits::template output_index_for<data_t, node_index, output_index>() !=
+                traits::invalid_index
+                );
+            static_assert(
+                !is_connected,
+                "Requested output port is already connected; cannot bind_output_at"
+                );
+
+            auto& ctx = std::get<node_index>(mContexts);
+            ctx.template set_output_ptr<output_index, data_t>(&data);
+        }
+
+        template<std::size_t node_id, typename data_t>
+        constexpr void bind_input(data_t& data) {
+            constexpr std::size_t node_index = [] () constexpr {
+                constexpr auto ids = topology_t::ids();
+                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
+                return static_cast<std::size_t>(-1);
+                }();
+            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            using node_type = node_type_at<node_index>;
+            using node_manifest = typename node_type::module_type::Manifest;
+            static_assert(node_manifest::template contains<data_t>, "Type not declared in node Manifest");
+            constexpr std::size_t in_count = node_manifest::template input_count<data_t>();
+            static_assert(
+                in_count > 0,
+                "No input ports for this type"
+                );
+            static_assert(
+                in_count == 1,
+                "Bind_input is only valid for single-input types; use bind_input_at for multi-input types"
+                );
+            bind_input_at<node_id, 0, data_t>(data);
+        }
+
+        template<std::size_t node_id, std::size_t input_index, typename data_t>
+        constexpr void bind_input_at(data_t& data) {
+
+            constexpr std::size_t node_index = [] () constexpr {
+                constexpr auto ids = topology_t::ids();
+                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
+                return static_cast<std::size_t>(-1);
+                }();
+            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            using node_type = node_type_at<node_index>;
+            using node_manifest = typename node_type::module_type::Manifest;
+            static_assert(node_manifest::template contains<data_t>, "Type not declared in node Manifest");
+            constexpr std::size_t in_count = node_manifest::template input_count<data_t>();
+            static_assert(input_index < in_count, "Invalid input index for this node/type");
+
+            // Ensure the specific input port is not already connected in the graph
+            constexpr bool is_connected = (
+                traits::template input_index_for<data_t, node_index, input_index>() !=
+                traits::invalid_index
+                );
+            static_assert(!is_connected, "Requested input port is already connected; cannot bind_input_at");
+
+            auto& ctx = std::get<node_index>(mContexts);
+            ctx.template set_input_ptr<input_index, data_t>(&data);
+        }
+
+        constexpr bool all_ios_connected() const {
+            return std::apply([] (auto& ... ctxs) { return (ctxs.all_ios_connected() && ...); }, mContexts);
         }
 
         template<typename stream_t>
@@ -134,141 +211,7 @@ namespace ugraph {
             ugraph::print_pipeline<topology_t>(stream, inGraphName);
         }
 
-        constexpr bool all_ios_connected() const {
-            return all_ios_connected_impl(std::make_index_sequence<topology_t::size()>{});
-        }
-
-        template<typename node_port_t, typename T>
-        constexpr void bind(const node_port_t&, T& data) {
-            constexpr std::size_t vid = node_port_t::node_type::id();
-            constexpr std::size_t node_index = node_index_for_id<vid>();
-            static_assert(node_index != traits::invalid_index, "Node not found in graph");
-
-            using node_type = node_type_at<node_index>;
-            using node_manifest = typename node_type::module_type::Manifest;
-            static_assert(node_manifest::template contains<T>, "Type not declared in Node Manifest");
-
-            constexpr std::size_t port_index = node_port_t::index();
-            auto& ctx = std::get<node_index>(mContexts);
-
-            if constexpr (is_output_port<node_port_t>::value) {
-                static_assert(std::is_same_v<T, typename node_port_t::data_type>, "Output port type mismatch");
-                static_assert(
-                    !traits::template has_output_edge<T, vid, port_index>(),
-                    "Output port already connected in graph"
-                    );
-                ctx.template set_output_ptr<T, port_index>(&data);
-            }
-            else {
-                static_assert(
-                    !traits::template has_input_edge<T, vid, port_index>(),
-                    "Input port already connected in graph"
-                    );
-                ctx.template set_input_ptr<T, port_index>(&data);
-            }
-        }
-
     private:
-
-        template<typename P, typename = void>
-        struct is_output_port : std::false_type {};
-
-        template<typename P>
-        struct is_output_port<P, std::void_t<typename P::data_type>> : std::true_type {};
-
-        template<std::size_t VID, std::size_t I = 0>
-        static constexpr std::size_t node_index_for_id() {
-            if constexpr (I >= topology_t::size()) {
-                return traits::invalid_index;
-            }
-            else if constexpr (topology_t::template id_at<I>() == VID) {
-                return I;
-            }
-            else {
-                return node_index_for_id<VID, I + 1>();
-            }
-        }
-
-        template<typename T, std::size_t InN, std::size_t OutN, std::size_t... I, std::size_t... O>
-        constexpr std::array<T*, InN + OutN>
-            concat_ptr_arrays(const std::array<T*, InN>& in,
-                const std::array<T*, OutN>& out,
-                std::index_sequence<I...>,
-                std::index_sequence<O...>) {
-            return { in[I]..., out[O]... };
-        }
-
-        template<typename NodeManifest, typename T, std::size_t NodeIndex, std::size_t... P>
-        constexpr std::array<T*, NodeManifest::template input_count<T>()>
-            build_input_ptrs_array_impl(std::index_sequence<P...>) {
-            if constexpr (NodeManifest::template strict_connection<T>()) {
-                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
-                static_assert((traits::template has_input_edge<T, vid, P>() && ...),
-                    "Strict input connection missing in graph");
-            }
-            if constexpr (data_count<T>() == 0) {
-                return { ((void) P, nullptr)... };
-            }
-            else {
-                auto* base = data<T>();
-                return { ((traits::template input_index_for<T, NodeIndex, P>() == traits::invalid_index)
-                    ? nullptr
-                    : &base[traits::template input_index_for<T, NodeIndex, P>()])... };
-            }
-        }
-
-        template<typename NodeManifest, typename T, std::size_t NodeIndex>
-        constexpr std::array<T*, NodeManifest::template input_count<T>()>
-            build_input_ptrs_array() {
-            return build_input_ptrs_array_impl<NodeManifest, T, NodeIndex>(
-                std::make_index_sequence<NodeManifest::template input_count<T>()>{});
-        }
-
-        template<typename NodeManifest, typename T, std::size_t NodeIndex, std::size_t... P>
-        constexpr std::array<T*, NodeManifest::template output_count<T>()>
-            build_output_ptrs_array_impl(std::index_sequence<P...>) {
-            if constexpr (NodeManifest::template strict_connection<T>()) {
-                constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
-                static_assert((traits::template has_output_edge<T, vid, P>() && ...),
-                    "Strict output connection missing in graph");
-            }
-            if constexpr (data_count<T>() == 0) {
-                return { ((void) P, nullptr)... };
-            }
-            else {
-                auto* base = data<T>();
-                return { ((traits::template output_index_for<T, NodeIndex, P>() == traits::invalid_index)
-                    ? nullptr
-                    : &base[traits::template output_index_for<T, NodeIndex, P>()])... };
-            }
-        }
-
-        template<typename NodeManifest, typename T, std::size_t NodeIndex>
-        constexpr std::array<T*, NodeManifest::template output_count<T>()>
-            build_output_ptrs_array() {
-            return build_output_ptrs_array_impl<NodeManifest, T, NodeIndex>(
-                std::make_index_sequence<NodeManifest::template output_count<T>()>{});
-        }
-
-        template<typename NodeManifest, typename T, std::size_t NodeIndex>
-        constexpr typename Context<NodeManifest>::template data_array_t<T>
-            build_io_ptrs_array() {
-            auto input_ptrs = build_input_ptrs_array<NodeManifest, T, NodeIndex>();
-            auto output_ptrs = build_output_ptrs_array<NodeManifest, T, NodeIndex>();
-            return concat_ptr_arrays<T,
-                NodeManifest::template input_count<T>(),
-                NodeManifest::template output_count<T>()>(
-                    input_ptrs,
-                    output_ptrs,
-                    std::make_index_sequence<NodeManifest::template input_count<T>()>{},
-                    std::make_index_sequence<NodeManifest::template output_count<T>()>{});
-        }
-
-        template<typename NodeManifest, std::size_t NodeIndex, std::size_t... Tidx>
-        constexpr void init_context_io(Context<NodeManifest>& ctx, std::index_sequence<Tidx...>) {
-            (ctx.template set_ios<typename NodeManifest::template type_at<Tidx>>(
-                build_io_ptrs_array<NodeManifest, typename NodeManifest::template type_at<Tidx>, NodeIndex>()), ...);
-        }
 
         template<std::size_t I, typename F>
         constexpr void for_each_at(F&& f) {
@@ -280,81 +223,92 @@ namespace ugraph {
             (for_each_at<I>(std::forward<F>(f)), ...);
         }
 
-        template<std::size_t I>
-        constexpr void init_context_at() {
-            using node_type = node_type_at<I>;
+        template<std::size_t node_index, std::size_t... tidx>
+        constexpr void init_node_types(graph_data_t& graph_data, std::index_sequence<tidx...>) {
+            using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
-            auto& ctx = std::get<I>(mContexts);
-            init_context_io<node_manifest, I>(ctx, std::make_index_sequence<node_manifest::type_count>{});
+            auto& ctx = std::get<node_index>(mContexts);
+            (init_type<node_index, typename node_manifest::template type_at<tidx>>(graph_data, ctx), ...);
         }
 
-        template<std::size_t... I>
-        constexpr void init_contexts(std::index_sequence<I...>) {
-            (init_context_at<I>(), ...);
+        template<std::size_t node_index, typename data_t, typename ctx_t>
+        constexpr void init_type(graph_data_t& graph_data, ctx_t& ctx) {
+            using node_type = node_type_at<node_index>;
+            using node_manifest = typename node_type::module_type::Manifest;;
+            constexpr std::size_t manifest_index = manifest_t::template index<data_t>();
+
+            auto& arr = std::get<manifest_index>(graph_data);
+
+            constexpr std::size_t in_count = node_manifest::template input_count<data_t>();
+            init_inputs_impl<node_index, data_t>(ctx, arr, std::make_index_sequence<in_count>{});
+
+            constexpr std::size_t out_count = node_manifest::template output_count<data_t>();
+            init_outputs_impl<node_index, data_t>(ctx, arr, std::make_index_sequence<out_count>{});
         }
 
-        template<typename NodeManifest, typename T, std::size_t... P>
-        constexpr bool all_inputs_connected(const Context<NodeManifest>& ctx,
-            std::index_sequence<P...>) const {
-            if constexpr (NodeManifest::template input_count<T>() == 0) {
-                return true;
-            }
-            else {
-                return (ctx.template has_input<T, P>() && ...);
-            }
+        template<std::size_t node_index, typename data_t, typename ctx_t, std::size_t... ps>
+        constexpr void init_inputs_impl(
+            ctx_t& ctx,
+            std::array<data_t, traits::template coloring_t<data_t>::data_count()>& arr,
+            std::index_sequence<ps...>
+        ) {
+            (ctx.template set_input_ptr<ps, data_t>(
+                (traits::template input_index_for<data_t, node_index, ps>() != traits::invalid_index)
+                ? &arr[traits::template input_index_for<data_t, node_index, ps>()]
+                : nullptr
+            ), ...);
         }
 
-        template<typename NodeManifest, typename T, std::size_t... P>
-        constexpr bool all_outputs_connected(const Context<NodeManifest>& ctx,
-            std::index_sequence<P...>) const {
-            if constexpr (NodeManifest::template output_count<T>() == 0) {
-                return true;
-            }
-            else {
-                return (ctx.template has_output<T, P>() && ...);
-            }
+        template<std::size_t node_index, typename data_t, typename ctx_t, std::size_t... ps>
+        constexpr void init_outputs_impl(
+            ctx_t& ctx,
+            std::array<data_t, traits::template coloring_t<data_t>::data_count()>& arr,
+            std::index_sequence<ps...>
+        ) {
+            (ctx.template set_output_ptr<ps, data_t>(
+                (traits::template output_index_for<data_t, node_index, ps>() != traits::invalid_index)
+                ? &arr[traits::template output_index_for<data_t, node_index, ps>()]
+                : nullptr
+            ), ...);
         }
 
-        template<typename NodeManifest, typename T>
-        constexpr bool all_ios_connected_for_type(const Context<NodeManifest>& ctx) const {
-            const bool inputs_ok = all_inputs_connected<NodeManifest, T>(ctx,
-                std::make_index_sequence<NodeManifest::template input_count<T>()>{});
-            const bool outputs_ok = all_outputs_connected<NodeManifest, T>(ctx,
-                std::make_index_sequence<NodeManifest::template output_count<T>()>{});
-            return inputs_ok && outputs_ok;
-        }
-
-        template<typename NodeManifest, std::size_t... Tidx>
-        constexpr bool all_ios_connected_for_manifest(const Context<NodeManifest>& ctx,
-            std::index_sequence<Tidx...>) const {
-            if constexpr (NodeManifest::type_count == 0) {
-                return true;
-            }
-            else {
-                return (all_ios_connected_for_type<NodeManifest, typename NodeManifest::template type_at<Tidx>>(ctx) && ...);
-            }
-        }
-
-        template<std::size_t I>
-        constexpr bool all_ios_connected_at() const {
-            using node_type = node_type_at<I>;
-            using node_manifest = typename node_type::module_type::Manifest;
-            const auto& ctx = std::get<I>(mContexts);
-            return all_ios_connected_for_manifest<node_manifest>(ctx,
-                std::make_index_sequence<node_manifest::type_count>{});
-        }
-
-        template<std::size_t... I>
-        constexpr bool all_ios_connected_impl(std::index_sequence<I...>) const {
-            if constexpr (topology_t::size() == 0) {
-                return true;
-            }
-            else {
-                return (all_ios_connected_at<I>() && ...);
-            }
+        template<std::size_t... Is>
+        constexpr void init_graph_data_impl(
+            graph_data_t& graph_data,
+            std::index_sequence<Is...>
+        ) {
+            (
+                init_node_types<Is>(
+                    graph_data,
+                    std::make_index_sequence<node_type_at<Is>::module_type::Manifest::type_count>{}
+                ), ...
+                );
         }
 
     };
+
+    template<typename data_t, typename tuple_t, std::size_t I = 0>
+    struct tuple_index_of_type_impl {
+        static_assert(I < std::tuple_size_v<tuple_t> +1, "index out of bounds");
+        using arr_t = std::tuple_element_t<I, tuple_t>;
+        using elem_t = typename arr_t::value_type;
+        static constexpr std::size_t value = std::is_same_v<data_t, elem_t>
+            ? I
+            : tuple_index_of_type_impl<data_t, tuple_t, I + 1>::value;
+    };
+
+    template<typename data_t, typename tuple_t>
+    struct tuple_index_of_type_impl<data_t, tuple_t, std::tuple_size_v<tuple_t>> {
+        static constexpr std::size_t value = static_cast<std::size_t>(-1);
+    };
+
+    template<typename data_t, typename graph_data_t>
+    static constexpr data_t& data_at(graph_data_t& graph_data, std::size_t i) {
+        constexpr std::size_t index = tuple_index_of_type_impl<data_t, graph_data_t>::value;
+        static_assert(index != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
+        auto& arr = std::get<index>(graph_data);
+        return arr[i];
+    }
 
     template<typename E0, typename... ERest>
     Graph(E0 const&, ERest const&...) -> Graph<std::decay_t<E0>, std::decay_t<ERest>...>;
