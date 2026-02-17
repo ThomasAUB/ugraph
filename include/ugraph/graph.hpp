@@ -287,9 +287,11 @@ namespace ugraph {
 
     };
 
-    template<typename data_t, typename tuple_t, std::size_t I = 0>
-    struct tuple_index_of_type_impl {
-        static_assert(I < std::tuple_size_v<tuple_t> +1, "index out of bounds");
+    template<typename data_t, typename tuple_t, std::size_t I = 0, bool InRange = (I < std::tuple_size_v<tuple_t>)>
+    struct tuple_index_of_type_impl;
+
+    template<typename data_t, typename tuple_t, std::size_t I>
+    struct tuple_index_of_type_impl<data_t, tuple_t, I, true> {
         using arr_t = std::tuple_element_t<I, tuple_t>;
         using elem_t = typename arr_t::value_type;
         static constexpr std::size_t value = std::is_same_v<data_t, elem_t>
@@ -297,8 +299,8 @@ namespace ugraph {
             : tuple_index_of_type_impl<data_t, tuple_t, I + 1>::value;
     };
 
-    template<typename data_t, typename tuple_t>
-    struct tuple_index_of_type_impl<data_t, tuple_t, std::tuple_size_v<tuple_t>> {
+    template<typename data_t, typename tuple_t, std::size_t I>
+    struct tuple_index_of_type_impl<data_t, tuple_t, I, false> {
         static constexpr std::size_t value = static_cast<std::size_t>(-1);
     };
 

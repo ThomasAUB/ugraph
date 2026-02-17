@@ -154,11 +154,6 @@ namespace ugraph {
         return Node<id, module_t, manifest_t, _priority>(module);
     }
 
-    // Class Template Argument Deduction (CTAD) for `Node`:
-    // Deduces the module type and its Manifest, defaults id and priority to 0.
-    template<std::size_t I, typename module_t>
-    Node(module_t&) -> Node<I, module_t, typename module_t::Manifest, 0>;
-
     template<
         typename out_port_t,
         typename in_port_t,
