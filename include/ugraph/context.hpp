@@ -98,7 +98,7 @@ namespace ugraph {
             std::get<std::decay_t<decltype(inData)>>(mDataPtrsTuple) = inData;
         }
 
-        template<typename data_t, std::size_t I>
+        template<std::size_t I, typename data_t>
         constexpr void set_input_ptr(data_t* ptr) {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             static_assert(I < input_count<data_t>(), "Invalid input index");
@@ -106,7 +106,7 @@ namespace ugraph {
             data[I] = ptr;
         }
 
-        template<typename data_t, std::size_t I>
+        template<std::size_t I, typename data_t >
         constexpr void set_output_ptr(data_t* ptr) {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             static_assert(I < output_count<data_t>(), "Invalid output index");

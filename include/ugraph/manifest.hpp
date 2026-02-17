@@ -33,9 +33,9 @@
 
 namespace ugraph {
 
-    template<typename T, std::size_t in, std::size_t out, bool strict = true>
+    template<typename data_t, std::size_t in, std::size_t out, bool strict = true>
     struct IO {
-        using type = T;
+        using type = data_t;
         static constexpr std::size_t input_count = in;
         static constexpr std::size_t output_count = out;
         static constexpr bool strict_connection = strict;
@@ -54,29 +54,29 @@ namespace ugraph {
             static constexpr bool strict_connection = false;
         };
 
-        template<typename T, std::size_t in, std::size_t out, bool strict>
-        struct io_traits<IO<T, in, out, strict>> {
-            using type = T;
+        template<typename data_t, std::size_t in, std::size_t out, bool strict>
+        struct io_traits<IO<data_t, in, out, strict>> {
+            using type = data_t;
             static constexpr std::size_t input_count = in;
             static constexpr std::size_t output_count = out;
             static constexpr bool strict_connection = strict;
         };
 
-        template<typename T, typename List>
+        template<typename data_t, typename list_t>
         struct io_entry_for;
 
-        template<typename T>
-        struct io_entry_for<T, detail::type_list<>> {
+        template<typename data_t>
+        struct io_entry_for<data_t, detail::type_list<>> {
             using type = void;
         };
 
-        template<typename T, typename io_t, typename... rest_t>
-        struct io_entry_for<T, detail::type_list<io_t, rest_t...>> {
+        template<typename data_t, typename io_t, typename... rest_t>
+        struct io_entry_for<data_t, detail::type_list<io_t, rest_t...>> {
             using traits = io_traits<io_t>;
             using type = std::conditional_t<
-                std::is_same_v<T, typename traits::type>,
+                std::is_same_v<data_t, typename traits::type>,
                 io_t,
-                typename io_entry_for<T, detail::type_list<rest_t...>>::type
+                typename io_entry_for<data_t, detail::type_list<rest_t...>>::type
             >;
         };
 
