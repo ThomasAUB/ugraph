@@ -94,12 +94,12 @@ namespace ugraph {
         }
 
         template<typename data_t>
-        void set_ios(const data_array_t<data_t>& inData) {
+        constexpr void set_ios(const data_array_t<data_t>& inData) {
             std::get<std::decay_t<decltype(inData)>>(mDataPtrsTuple) = inData;
         }
 
         template<typename data_t, std::size_t I>
-        void set_input_ptr(data_t* ptr) {
+        constexpr void set_input_ptr(data_t* ptr) {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             static_assert(I < input_count<data_t>(), "Invalid input index");
             auto& data = std::get<data_array_t<data_t>>(mDataPtrsTuple);
@@ -107,11 +107,23 @@ namespace ugraph {
         }
 
         template<typename data_t, std::size_t I>
-        void set_output_ptr(data_t* ptr) {
+        constexpr void set_output_ptr(data_t* ptr) {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
             static_assert(I < output_count<data_t>(), "Invalid output index");
             auto& data = std::get<data_array_t<data_t>>(mDataPtrsTuple);
             data[input_count<data_t>() + I] = ptr;
+        }
+
+        constexpr bool all_ios_connected() const {
+            return std::apply([] (auto const&... arrays) {
+                return (true && ... && ([&] (auto const& arr) {
+                    for (auto ptr : arr) {
+                        if (ptr == nullptr) return false;
+                    }
+                    return true;
+                    })(arrays));
+                }, mDataPtrsTuple
+            );
         }
 
     private:

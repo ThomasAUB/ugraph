@@ -172,7 +172,7 @@ namespace ugraph {
         }
 
         constexpr bool all_ios_connected() const {
-            return all_ios_connected_impl(std::make_index_sequence<topology_t::size()>{});
+            return std::apply([] (auto& ... ctxs) { return (ctxs.all_ios_connected() && ...); }, mContexts);
         }
 
         template<typename stream_t>
@@ -195,48 +195,6 @@ namespace ugraph {
         template<typename F, std::size_t... I>
         constexpr void for_each_impl(F&& f, std::index_sequence<I...>) {
             (for_each_at<I>(std::forward<F>(f)), ...);
-        }
-
-        template<typename NodeManifest, typename T, std::size_t... P>
-        constexpr bool all_inputs_connected(const Context<NodeManifest>& ctx,
-            std::index_sequence<P...>) const {
-            return (ctx.template has_input<T, P>() && ...);
-        }
-
-        template<typename NodeManifest, typename T, std::size_t... P>
-        constexpr bool all_outputs_connected(const Context<NodeManifest>& ctx,
-            std::index_sequence<P...>) const {
-            return (ctx.template has_output<T, P>() && ...);
-        }
-
-        template<typename NodeManifest, typename T>
-        constexpr bool all_ios_connected_for_type(const Context<NodeManifest>& ctx) const {
-            constexpr std::size_t in_count = NodeManifest::template input_count<T>();
-            constexpr std::size_t out_count = NodeManifest::template output_count<T>();
-            return (
-                all_inputs_connected<NodeManifest, T>(ctx, std::make_index_sequence<in_count>{}) &&
-                all_outputs_connected<NodeManifest, T>(ctx, std::make_index_sequence<out_count>{})
-                );
-        }
-
-        template<typename NodeManifest, std::size_t... Tidx>
-        constexpr bool all_ios_connected_for_manifest(const Context<NodeManifest>& ctx,
-            std::index_sequence<Tidx...>) const {
-            return (all_ios_connected_for_type<NodeManifest, typename NodeManifest::template type_at<Tidx>>(ctx) && ...);
-        }
-
-        template<std::size_t I>
-        constexpr bool all_ios_connected_at() const {
-            using node_type = node_type_at<I>;
-            using node_manifest = typename node_type::module_type::Manifest;
-            const auto& ctx = std::get<I>(mContexts);
-            return all_ios_connected_for_manifest<node_manifest>(ctx,
-                std::make_index_sequence<node_manifest::type_count>{});
-        }
-
-        template<std::size_t... I>
-        constexpr bool all_ios_connected_impl(std::index_sequence<I...>) const {
-            return (all_ios_connected_at<I>() && ...);
         }
 
         template<std::size_t NodeIndex, std::size_t... Tidx>
@@ -285,7 +243,6 @@ namespace ugraph {
             ), ...);
         }
 
-
         template<std::size_t... Is>
         constexpr void init_graph_data_impl(graph_data_t& graph_data, std::index_sequence<Is...>) {
             (init_node_types<Is>(graph_data, std::make_index_sequence<node_type_at<Is>::module_type::Manifest::type_count>{}), ...);
@@ -313,7 +270,6 @@ namespace ugraph {
         constexpr std::size_t index = tuple_index_of_type_impl<T, graph_data_t>::value;
         static_assert(index != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
         auto& arr = std::get<index>(graph_data);
-        //assert(i < arr.size());
         return arr[i];
     }
 
