@@ -1,6 +1,3 @@
-// NOTE: This file intentionally expands previously very condensed one-line test code
-// into a more readable, step‑by‑step style. Semantics must remain identical.
-
 #include "doctest.h"
 #include "ugraph.hpp"
 #include <array>
@@ -9,6 +6,13 @@
 
 // Audio processing oriented Graph executor tests (sources -> mixer -> gain -> sink + perf).
 namespace {
+
+    struct Parameters {
+        void setFreq(uint16_t inFreq) { mFreq = inFreq; }
+        uint16_t getFreq() const { return mFreq; }
+    private:
+        uint16_t mFreq = 0;
+    };
 
     // Simple fixed-size audio buffer with helper utilities.
     struct AudioBuffer {
@@ -27,11 +31,15 @@ namespace {
     // Produces a constant value each call.
     struct ConstantSource {
 
-        using Manifest = ugraph::Manifest< ugraph::IO<AudioBuffer, 0, 1> >;
+        using Manifest = ugraph::Manifest<
+            ugraph::IO<AudioBuffer, 0, 1>,
+            ugraph::IO<Parameters, 1, 0, false>
+        >;
 
         float value { 0.f };
 
         void process(ugraph::Context<Manifest>& ctx) {
+            auto frequency = ctx.input<Parameters>().getFreq();
             process(ctx.output<AudioBuffer>().mData, ctx.output<AudioBuffer>().mSize);
         }
 
@@ -108,7 +116,111 @@ namespace {
 
 }
 
+template<std::size_t id, typename module_t>
+using GraphNode = ugraph::Node<id, module_t, typename module_t::Manifest>;
+
+
+static auto makeVoiceGraph(
+    ConstantSource& s1,
+    ConstantSource& s2,
+    Mixer2& m,
+    Gain& g,
+    Sink& s
+) {
+
+    auto vA = ugraph::make_node<0>(s1);
+    auto vB = ugraph::make_node<1>(s2);
+    auto vMix = ugraph::make_node<2>(m);
+    auto vGain = ugraph::make_node<3>(g);
+    auto vSink = ugraph::make_node<4>(s);
+
+    auto graph = ugraph::Graph(
+        vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(),
+        vB.output<AudioBuffer>() >> vMix.input<AudioBuffer, 1>(),
+        vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(),
+        vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
+    );
+
+    return graph;
+}
+
+using voice_graph_t = decltype(
+    makeVoiceGraph(
+        std::declval<ConstantSource&>(),
+        std::declval<ConstantSource&>(),
+        std::declval<Mixer2&>(),
+        std::declval<Gain&>(),
+        std::declval<Sink&>()
+    )
+    );
+
+
+struct Voice {
+
+    using graph_data_t = voice_graph_t::graph_data_t;
+
+    Voice(graph_data_t& inGraphData) :
+        mGraph(makeVoiceGraph(sa, sb, mix, gain, sink)) {
+        mGraph.init_graph_data(inGraphData);
+
+        mGraph.bind_input<0>(mParams[0]);
+        mGraph.bind_input<1>(mParams[1]);
+
+        CHECK(mGraph.all_ios_connected());
+    }
+
+    void setFreq(uint16_t inFreq) {
+        mParams[0].setFreq(inFreq);
+        mParams[1].setFreq(inFreq);
+    }
+
+    void process() {
+        mGraph.for_each(
+            [] (auto& m, auto& ctx) {
+                m.process(ctx);
+            }
+        );
+    }
+
+    void print() {
+        mGraph.print(std::cout);
+    }
+
+private:
+
+    ConstantSource sa { 0.25f };
+    ConstantSource sb { 0.75f };
+    Mixer2        mix {};
+    Gain          gain { 0.5f };
+    Sink          sink {};
+
+    voice_graph_t mGraph;
+
+    Parameters mParams[2];
+};
+
+TEST_CASE("basic synth voice test") {
+
+    Voice::graph_data_t dg;
+
+    static constexpr auto storage_count = voice_graph_t::data_count<AudioBuffer>();
+    static_assert(storage_count == 3);
+    static constexpr auto storage_size = 64;
+    using buffer_storage_t = std::array<float, storage_size>;
+    std::array<buffer_storage_t, storage_count> storage;
+
+    for (int i = 0; i < storage_count; i++) {
+        ugraph::data_at<AudioBuffer>(dg, i) = storage[i];
+    }
+
+    Voice voice(dg);
+    //voice.print();
+    voice.process();
+
+}
+
 TEST_CASE("audio graph simple chain correctness") {
+
     ConstantSource sa { 0.25f };
     ConstantSource sb { 0.75f };
     Mixer2        mix {};
@@ -128,15 +240,24 @@ TEST_CASE("audio graph simple chain correctness") {
         vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
     );
 
+    decltype(g)::graph_data_t dg;
+    g.init_graph_data(dg);
+
+    Parameters params[2];
+    g.bind_input<3001>(params[0]);
+    g.bind_input<3002>(params[1]);
+
+    CHECK(g.all_ios_connected());
+
     static_assert(decltype(g)::template data_count<AudioBuffer>() == 3, "Unexpected buffer count");
 
     static constexpr auto storage_count = decltype(g)::data_count<AudioBuffer>();
     static constexpr auto storage_size = 64;
-    using buffer_storage_t = std::array<float, storage_size>;
-    std::array<buffer_storage_t, storage_count> storage;
+    using buffer_storage_t2 = std::array<float, storage_size>;
+    std::array<buffer_storage_t2, storage_count> storage;
 
     for (int i = 0; i < storage_count; i++) {
-        g.data_at<AudioBuffer>(i) = storage[i];
+        ugraph::data_at<AudioBuffer>(dg, i) = storage[i];
     }
 
     g.for_each(
@@ -147,6 +268,7 @@ TEST_CASE("audio graph simple chain correctness") {
 
     CHECK(sink.last_sample == doctest::Approx(0.5f));
     CHECK(sink.sum == doctest::Approx(0.5f * storage_size));
+
 }
 
 TEST_CASE("audio graph repeated processing") {
@@ -170,13 +292,22 @@ TEST_CASE("audio graph repeated processing") {
         vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
     );
 
+    decltype(g)::graph_data_t dg;
+    g.init_graph_data(dg);
+
+    Parameters params[2];
+    g.bind_input<4001>(params[0]);
+    g.bind_input<4002>(params[1]);
+
+    CHECK(g.all_ios_connected());
+
     static constexpr auto storage_count = decltype(g)::data_count<AudioBuffer>();
     static constexpr auto storage_size = 64;
     using buffer_storage_t = std::array<float, storage_size>;
     std::array<buffer_storage_t, storage_count> storage;
 
     for (int i = 0; i < storage_count; i++) {
-        g.data_at<AudioBuffer>(i) = storage[i];
+        ugraph::data_at<AudioBuffer>(dg, i) = storage[i];
     }
 
     constexpr std::size_t iterations = 2500;
@@ -217,6 +348,15 @@ TEST_CASE("audio graph pipeline vs manual performance ratio") {
         vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
     );
 
+    decltype(g)::graph_data_t dg;
+    g.init_graph_data(dg);
+
+    Parameters params[2];
+    g.bind_input<5001>(params[0]);
+    g.bind_input<5002>(params[1]);
+
+    CHECK(g.all_ios_connected());
+
     constexpr std::size_t kBlockSize = 64;
 
     // Manual reference buffers
@@ -230,7 +370,7 @@ TEST_CASE("audio graph pipeline vs manual performance ratio") {
     using graph_buffer_storage_t = std::array<float, kBlockSize>;
     std::array<graph_buffer_storage_t, graph_storage_count> gstorage;
     for (std::size_t i = 0; i < graph_storage_count; ++i) {
-        g.data_at<AudioBuffer>(i) = gstorage[i];
+        ugraph::data_at<AudioBuffer>(dg, i) = gstorage[i];
     }
 
     // Warm-up both paths (also protects against extremely small timings)

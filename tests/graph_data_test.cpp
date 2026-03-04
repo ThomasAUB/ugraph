@@ -29,7 +29,7 @@ struct Module1 {
 struct Source {
 
     using Manifest = ugraph::Manifest<
-        ugraph::IO<MyData1, 0, 1>,
+        ugraph::IO<MyData1, 1, 1, false>,
         ugraph::IO<MyEvent, 0, 1>
     >;
 
@@ -46,7 +46,7 @@ struct Source {
 struct Sink {
 
     using Manifest = ugraph::Manifest<
-        ugraph::IO<MyData1, 2, 0>,
+        ugraph::IO<MyData1, 3, 1, false>,
         ugraph::IO<MyEvent, 1, 0>
     >;
 
@@ -86,19 +86,36 @@ TEST_CASE("graph data propagation") {
         srcNode.output<MyEvent>() >> sinkNode.input<MyEvent, 0>()
     );
 
+    decltype(graph)::graph_data_t graph_data;
+    graph.init_graph_data(graph_data);
+
+    MyData1 md0 = 0;
+    graph.bind_input<100>(md0);
+
+    MyData1 md_in = 78;
+    graph.bind_input_at<102, 2>(md_in);
+
+    MyData1 md1 = 0;
+    graph.bind_output<102>(md1);
+
+    CHECK(graph.all_ios_connected());
+
     graph.for_each(
         [] (auto& n, auto& ctx) {
             n.process(ctx);
         }
     );
 
+    graph.print(std::cout);
+
     CHECK(graph.data_count<MyData1>() == 2);
     CHECK(graph.data_count<MyEvent>() == 1);
     CHECK(m1.last_in == 1);
     CHECK(m1.last_out == 2);
-    REQUIRE(sink.inputs.size() == 2);
+    REQUIRE(sink.inputs.size() == 3);
     CHECK(sink.inputs[0] == 2);
     CHECK(sink.inputs[1] == 1);
+    CHECK(sink.inputs[2] == 78);
     CHECK(sink.event_seen);
     CHECK(sink.event_value == 789);
 
@@ -120,6 +137,9 @@ TEST_CASE("graph print output") {
         srcNode.output<MyData1>() >> sinkNode.input<MyData1, 1>(),
         srcNode.output<MyEvent>() >> sinkNode.input<MyEvent>()
     );
+
+    decltype(graph)::graph_data_t dg;
+    graph.init_graph_data(dg);
 
     std::ostringstream oss;
     graph.print(oss);

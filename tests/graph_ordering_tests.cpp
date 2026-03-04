@@ -23,6 +23,9 @@ TEST_CASE("graph_view basic linear ordering") {
         vA.output<const char*, 0>() >> vB.input<const char*, 0>()
     );
 
+    decltype(g)::graph_data_t dg;
+    g.init_graph_data(dg);
+
     static_assert(decltype(g)::topology_type::size() == 3, "Unexpected vertex count");
     auto ids = decltype(g)::topology_type::ids();
     CHECK(ids.size() == 3);
@@ -58,6 +61,9 @@ TEST_CASE("graph_view fork-join ordering") {
         vB1.output<const char*>() >> vMerge.input<const char*, 0>()
     );
 
+    decltype(g)::graph_data_t dg;
+    g.init_graph_data(dg);
+
     std::vector<std::string_view> names;
     g.for_each([&] (auto& module, auto&) { names.emplace_back(module.name); });
 
@@ -79,6 +85,9 @@ TEST_CASE("graph_view for_each vs apply equivalence and mutation") {
     auto vB = ugraph::make_node<302>(sb);
 
     auto g = ugraph::Graph(vA.output<const char*, 0>() >> vB.input<const char*, 0>());
+
+    decltype(g)::graph_data_t dg;
+    g.init_graph_data(dg);
 
     std::vector<char> seq1;
     g.for_each([&] (auto& module, auto&) { seq1.push_back(module.name[0]); });
