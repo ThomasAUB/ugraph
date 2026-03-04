@@ -444,6 +444,16 @@ namespace ugraph {
             return topo.order[I];
         }
 
+        template<std::size_t Id>
+        static constexpr bool has_id() {
+            for (std::size_t i = 0; i < vertex_count; ++i) {
+                if (topo.order[i] == Id) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Query vertex type by id at compile-time: Topology::find_type_by_id<VID>::type
         template<std::size_t Id>
         struct find_type_by_id {

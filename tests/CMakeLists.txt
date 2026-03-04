@@ -11,6 +11,7 @@ set(TARGET_SRC
     topology_nested_tests.cpp
 
     graph_ordering_tests.cpp
+    graph_nested_tests.cpp
     graph_printer_tests.cpp
     graph_data_count_tests.cpp
     manual_bind_tests.cpp

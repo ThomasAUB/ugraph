@@ -76,9 +76,35 @@ namespace ugraph {
     public:
 
         using topology_type = topology_t;
+        using vertex_types_list_public = typename topology_t::vertex_types_list_public;
+        using edge_types_list_public = typename traits::flattened_edges_t;
 
         constexpr Graph(const edges_t&... es) :
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {}
+
+        static constexpr auto ids() { return topology_t::ids(); }
+        static constexpr std::size_t size() { return topology_t::size(); }
+        static constexpr auto edges() { return topology_t::edges(); }
+
+        template<std::size_t node_id>
+        static constexpr bool contains_node_id() { return topology_t::template has_id<node_id>(); }
+
+        template<std::size_t node_id>
+        constexpr auto module_ptr_by_id()
+            -> typename topology_t::template find_type_by_id<node_id>::type::module_type* {
+            static_assert(contains_node_id<node_id>(), "Invalid node id");
+            constexpr std::size_t node_index = [] () constexpr {
+                constexpr auto ids = topology_t::ids();
+                for (std::size_t i = 0; i < topology_t::size(); ++i) {
+                    if (ids[i] == node_id) {
+                        return i;
+                    }
+                }
+                return static_cast<std::size_t>(-1);
+                }();
+            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            return std::get<node_index>(mModules);
+        }
 
         template<typename F>
         constexpr void for_each(F&& f) {
