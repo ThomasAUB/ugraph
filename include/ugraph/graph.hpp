@@ -76,6 +76,7 @@ namespace ugraph {
     public:
 
         using topology_type = topology_t;
+        using Manifest = manifest_t;
         using vertex_types_list_public = typename topology_t::vertex_types_list_public;
         using edge_types_list_public = typename traits::flattened_edges_t;
 

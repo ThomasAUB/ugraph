@@ -16,10 +16,6 @@ namespace {
         }
     };
 
-    using NestedBoundaryManifest = ugraph::Manifest<
-        ugraph::IO<int, 1, 1>
-    >;
-
 }
 
 TEST_CASE("graph can contain nested graph nodes and flatten execution") {
@@ -38,7 +34,7 @@ TEST_CASE("graph can contain nested graph nodes and flatten execution") {
     AddStage outerSink { "outerSink" };
 
     auto outerSourceNode = ugraph::make_node<110>(outerSource);
-    auto outerNestedNode = ugraph::make_node<111, decltype(innerGraph), NestedBoundaryManifest>(innerGraph);
+    auto outerNestedNode = ugraph::make_node<111>(innerGraph);
     auto outerSinkNode = ugraph::make_node<112>(outerSink);
 
     auto graph = ugraph::Graph(
@@ -73,7 +69,7 @@ TEST_CASE("graph can contain nested graph nodes and flatten execution") {
     constexpr auto ids = decltype(graph)::topology_type::ids();
     CHECK(ids.size() == 4);
     CHECK(ids[0] == 110);
-    CHECK(ids[1] == 210);
-    CHECK(ids[2] == 211);
+    CHECK(ids[1] == 321);
+    CHECK(ids[2] == 322);
     CHECK(ids[3] == 112);
 }
