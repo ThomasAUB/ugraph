@@ -23,7 +23,11 @@ namespace {
     // Declare a node whose module_type is the Inner topology
     using NestedNode = ugraph::NodeTag<2000, Inner>;
 
-    using X = ugraph::NodeTag<3001, A>;
+    using X = ugraph::NodeTag<4001, A>;
+
+    static constexpr std::size_t IAo = NestedNode::id() + IA::id();
+    static constexpr std::size_t IBo = NestedNode::id() + IB::id();
+    static constexpr std::size_t ICo = NestedNode::id() + IC::id();
 
     // Outer topology uses NestedNode as a vertex
     using Outer = ugraph::Topology< std::pair<NestedNode, X>, std::pair<X, NestedNode> >;
@@ -42,17 +46,17 @@ namespace {
     }
 
     static_assert(Outer::edges().size() == 4, "Expanded edges count should be 4");
-    static_assert(count_pair(Outer::edges(), IA::id(), IB::id()) == 1, "IA->IB must exist");
-    static_assert(count_pair(Outer::edges(), IB::id(), IC::id()) == 1, "IB->IC must exist");
-    static_assert(count_pair(Outer::edges(), IC::id(), X::id()) == 1, "IC->X must exist");
-    static_assert(count_pair(Outer::edges(), X::id(), IA::id()) == 1, "X->IA must exist");
+    static_assert(count_pair(Outer::edges(), IAo, IBo) == 1, "IA->IB must exist");
+    static_assert(count_pair(Outer::edges(), IBo, ICo) == 1, "IB->IC must exist");
+    static_assert(count_pair(Outer::edges(), ICo, X::id()) == 1, "IC->X must exist");
+    static_assert(count_pair(Outer::edges(), X::id(), IAo) == 1, "X->IA must exist");
 
     TEST_CASE("nested topology compile-time ordering") {
         // Ensure inner vertex ids appear in the flattened vertex list
         constexpr auto ids = Outer::ids();
         bool found_inner_id = false;
         for (std::size_t i = 0; i < Outer::size(); ++i) {
-            if (ids[i] == IA::id() || ids[i] == IB::id() || ids[i] == IC::id()) {
+            if (ids[i] == IAo || ids[i] == IBo || ids[i] == ICo) {
                 found_inner_id = true;
                 break;
             }
@@ -81,10 +85,10 @@ namespace {
         std::vector<std::pair<std::size_t, std::size_t>> got(e.begin(), e.end());
 
         std::vector<std::pair<std::size_t, std::size_t>> expected = {
-            { IA::id(), IB::id() },
-            { IB::id(), IC::id() },
-            { IC::id(), X::id() },
-            { X::id(), IA::id() }
+            { IAo, IBo },
+            { IBo, ICo },
+            { ICo, X::id() },
+            { X::id(), IAo }
         };
 
         // every expected pair must appear in got
@@ -104,14 +108,14 @@ namespace {
         const std::string expected_graph =
             "```mermaid\n"
             "flowchart LR\n"
-            "1001(A 1001)\n"
-            "1002(B 1002)\n"
-            "1003(C 1003)\n"
             "3001(A 3001)\n"
-            "1001 --> 1002\n"
-            "1002 --> 1003\n"
-            "1003 --> 3001\n"
-            "3001 --> 1001\n"
+            "3002(B 3002)\n"
+            "3003(C 3003)\n"
+            "4001(A 4001)\n"
+            "3001 --> 3002\n"
+            "3002 --> 3003\n"
+            "3003 --> 4001\n"
+            "4001 --> 3001\n"
             "```\n";
 
         CHECK(g == expected_graph);
@@ -123,11 +127,11 @@ namespace {
         const std::string expected_pipeline =
             "```mermaid\n"
             "flowchart LR\n"
-            "1001(A 1001)\n"
-            "1002(B 1002)\n"
-            "1003(C 1003)\n"
             "3001(A 3001)\n"
-            "1001 --> 1002 --> 1003 --> 3001\n"
+            "3002(B 3002)\n"
+            "3003(C 3003)\n"
+            "4001(A 4001)\n"
+            "3001 --> 3002 --> 3003 --> 4001\n"
             "```\n";
 
         CHECK(p == expected_pipeline);

@@ -42,11 +42,27 @@ namespace ugraph {
     template<typename... edges_t>
     class Topology {
 
+        template<typename A, typename B>
+        struct same_vertex_identity : std::bool_constant<
+            (A::id() == B::id()) &&
+            std::is_same_v<typename A::module_type, typename B::module_type> &&
+            (A::priority() == B::priority())
+        > {};
+
         template<typename List, typename V> struct list_append_unique;
         template<typename V, typename... Ts>
         struct list_append_unique<detail::type_list<Ts...>, V> {
-            static constexpr bool exists = ((V::id() == Ts::id()) || ... || false);
+            static constexpr bool exists = (same_vertex_identity<V, Ts>::value || ... || false);
             using type = std::conditional_t<exists, detail::type_list<Ts...>, detail::type_list<Ts..., V>>;
+        };
+
+        template<typename V, std::size_t Base>
+        struct shifted_vertex {
+            static constexpr std::size_t id() { return Base + V::id(); }
+            static constexpr std::size_t priority() { return V::priority(); }
+            static constexpr std::size_t index() { return 0; }
+            using module_type = typename V::module_type;
+            using node_type = shifted_vertex<V, Base>;
         };
 
         // Helper to detect if a type exposes an inner topology vertex_types_list_public
@@ -69,6 +85,13 @@ namespace ugraph {
         template<typename List, typename... Vs>
         struct append_type_list<List, detail::type_list<Vs...>> { using type = typename append_types<List, Vs...>::type; };
 
+        template<typename TL, std::size_t Base>
+        struct shift_type_list;
+        template<std::size_t Base, typename... Vs>
+        struct shift_type_list<detail::type_list<Vs...>, Base> {
+            using type = detail::type_list<shifted_vertex<Vs, Base>...>;
+        };
+
         // expand the inner topology's vertex types into the parent list.
         template<typename List, typename V, bool = has_vertex_types_list<typename V::module_type>::value>
         struct list_add_vertex {
@@ -77,7 +100,8 @@ namespace ugraph {
         template<typename List, typename V>
         struct list_add_vertex<List, V, true> {
             using inner = typename V::module_type::vertex_types_list_public;
-            using type = typename append_type_list<List, inner>::type;
+            using shifted_inner = typename shift_type_list<inner, V::id()>::type;
+            using type = typename append_type_list<List, shifted_inner>::type;
         };
 
         template<typename List, typename Edge>
@@ -116,6 +140,19 @@ namespace ugraph {
             return std::array<std::size_t, sizeof...(I)>{ detail::type_list_at<I, vertex_types_list>::type::id()... };
         }
         static constexpr auto vertex_ids = make_vertex_ids(std::make_index_sequence<vertex_count>{});
+
+        static constexpr bool has_duplicate_vertex_ids() {
+            for (std::size_t i = 0; i < vertex_count; ++i) {
+                for (std::size_t j = i + 1; j < vertex_count; ++j) {
+                    if (vertex_ids[i] == vertex_ids[j]) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        static_assert(!has_duplicate_vertex_ids(), "Duplicate node ids detected after nested flattening");
 
         template<std::size_t... I>
         static constexpr auto make_vertex_priorities(std::index_sequence<I...>) {
@@ -186,7 +223,7 @@ namespace ugraph {
             static constexpr std::size_t value = compute();
         };
 
-        template<typename M, std::size_t K>
+        template<typename M, std::size_t K, std::size_t Base = 0>
         static constexpr std::size_t module_entry_id_at() {
             constexpr auto ids = M::ids();
             constexpr auto edges = M::edges();
@@ -197,14 +234,14 @@ namespace ugraph {
                     if (edges[j].second == ids[i]) { has_in = true; break; }
                 }
                 if (!has_in) {
-                    if (found == K) return ids[i];
+                    if (found == K) return Base + ids[i];
                     ++found;
                 }
             }
             return (std::size_t) 0;
         }
 
-        template<typename M, std::size_t K>
+        template<typename M, std::size_t K, std::size_t Base = 0>
         static constexpr std::size_t module_exit_id_at() {
             constexpr auto ids = M::ids();
             constexpr auto edges = M::edges();
@@ -215,7 +252,7 @@ namespace ugraph {
                     if (edges[j].first == ids[i]) { has_out = true; break; }
                 }
                 if (!has_out) {
-                    if (found == K) return ids[i];
+                    if (found == K) return Base + ids[i];
                     ++found;
                 }
             }
@@ -259,18 +296,18 @@ namespace ugraph {
                 constexpr std::size_t d = module_entry_count<typename D::module_type>::value;
                 constexpr std::size_t src_idx = K / d;
                 constexpr std::size_t dst_idx = K % d;
-                constexpr std::size_t sid = module_exit_id_at<typename S::module_type, src_idx>();
-                constexpr std::size_t did = module_entry_id_at<typename D::module_type, dst_idx>();
+                constexpr std::size_t sid = module_exit_id_at<typename S::module_type, src_idx, S::id()>();
+                constexpr std::size_t did = module_entry_id_at<typename D::module_type, dst_idx, D::id()>();
                 return { sid, did };
             }
             else if constexpr (S_is_module && !D_is_module) {
-                constexpr std::size_t sid = module_exit_id_at<typename S::module_type, K>();
+                constexpr std::size_t sid = module_exit_id_at<typename S::module_type, K, S::id()>();
                 return { sid, D::id() };
             }
             else if constexpr (!S_is_module && D_is_module) {
                 constexpr std::size_t d = module_entry_count<typename D::module_type>::value;
                 constexpr std::size_t dst_idx = K % d;
-                return { S::id(), module_entry_id_at<typename D::module_type, dst_idx>() };
+                return { S::id(), module_entry_id_at<typename D::module_type, dst_idx, D::id()>() };
             }
             else {
                 return { S::id(), D::id() };
@@ -311,7 +348,7 @@ namespace ugraph {
                     constexpr auto m_edges = vt::module_type::edges();
                     constexpr std::size_t msz = m_edges.size();
                     if constexpr (K < msz) {
-                        return m_edges[K];
+                        return std::pair<std::size_t, std::size_t> { vt::id() + m_edges[K].first, vt::id() + m_edges[K].second };
                     }
                     else {
                         return find_nested_pair_const<K - msz, I + 1>();
@@ -442,6 +479,16 @@ namespace ugraph {
         static constexpr std::size_t id_at() {
             static_assert(I < vertex_count, "Topology::id_at index out of range");
             return topo.order[I];
+        }
+
+        template<std::size_t Id>
+        static constexpr bool has_id() {
+            for (std::size_t i = 0; i < vertex_count; ++i) {
+                if (topo.order[i] == Id) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Query vertex type by id at compile-time: Topology::find_type_by_id<VID>::type
