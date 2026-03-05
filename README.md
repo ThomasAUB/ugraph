@@ -214,6 +214,20 @@ g.for_each([](auto& module, auto& ctx){
 
 ---
 
+## Nested Graph
+
+`ugraph::Graph` supports nested graphs: a node's module can itself be another `ugraph::Graph`.
+
+When an inner graph is wrapped with `make_node`, it is flattened into the parent graph:
+- The inner nodes are added to the parent topology.
+- Edges connected to the nested wrapper node are rewired to the inner graph boundaries (entry and exit nodes).
+
+Flattened node IDs are derived from the wrapper node ID:
+- `flat_inner_id = nested_node_id + inner_node_id`
+
+
+---
+
 ### Graph printing
 
 Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `Graph`.
