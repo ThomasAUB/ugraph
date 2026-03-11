@@ -33,3 +33,4 @@
 #include "ugraph/manifest.hpp"
 #include "ugraph/node_tag.hpp"
 #include "ugraph/graph_printer.hpp"
+#include "ugraph/dynamic_graph.hpp"

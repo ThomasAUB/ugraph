@@ -324,6 +324,229 @@ TEST_CASE("audio graph repeated processing") {
     CHECK(sink.sum == doctest::Approx(0.6f * storage_size));
 }
 
+TEST_CASE("dynamic audio graph runtime routing") {
+
+    ConstantSource sa { 0.25f };
+    ConstantSource sb { 0.75f };
+    Mixer2        mix {};
+    Gain          gain { 0.5f };
+    Sink          sink {};
+
+    auto vA = ugraph::make_node<6001>(sa);
+    auto vB = ugraph::make_node<6002>(sb);
+    auto vMix = ugraph::make_node<6003>(mix);
+    auto vGain = ugraph::make_node<6004>(gain);
+    auto vSink = ugraph::make_node<6005>(sink);
+
+    auto g = ugraph::DynamicGraph(vA, vB, vMix, vGain, vSink);
+
+    Parameters params[2];
+    CHECK(g.bind_input<6001>(params[0]));
+    CHECK(g.bind_input<6002>(params[1]));
+
+    static constexpr auto storage_size = 64;
+    std::array<float, storage_size> source_a_storage {};
+    std::array<float, storage_size> source_b_storage {};
+    std::array<float, storage_size> mix_storage {};
+    std::array<float, storage_size> gain_storage {};
+
+    AudioBuffer source_a_buffer { source_a_storage };
+    AudioBuffer source_b_buffer { source_b_storage };
+    AudioBuffer mix_buffer { mix_storage };
+    AudioBuffer gain_buffer { gain_storage };
+
+    CHECK(g.route(vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(), source_a_buffer));
+    CHECK(g.route(vB.output<AudioBuffer>() >> vMix.input<AudioBuffer, 1>(), source_b_buffer));
+    CHECK(g.route(vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(), mix_buffer));
+    CHECK(g.route(vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>(), gain_buffer));
+
+    CHECK(g.all_ios_connected());
+    CHECK(g.compile());
+    CHECK(g.process());
+
+    CHECK(sink.last_sample == doctest::Approx(0.5f));
+    CHECK(sink.sum == doctest::Approx(0.5f * storage_size));
+}
+
+TEST_CASE("audio graph manual vs compile-time vs runtime benchmark") {
+
+    ConstantSource saCompile { 0.3f };
+    ConstantSource sbCompile { 0.4f };
+    Mixer2        mixCompile {};
+    Gain          gainCompile { 1.25f };
+    Sink          sinkCompile {};
+
+    ConstantSource saRuntime { 0.3f };
+    ConstantSource sbRuntime { 0.4f };
+    Mixer2        mixRuntime {};
+    Gain          gainRuntime { 1.25f };
+    Sink          sinkRuntime {};
+
+    ConstantSource saManual { 0.3f };
+    ConstantSource sbManual { 0.4f };
+    Mixer2        mixManual {};
+    Gain          gainManual { 1.25f };
+    Sink          sinkManual {};
+
+    auto vACompile = ugraph::make_node<7001>(saCompile);
+    auto vBCompile = ugraph::make_node<7002>(sbCompile);
+    auto vMixCompile = ugraph::make_node<7003>(mixCompile);
+    auto vGainCompile = ugraph::make_node<7004>(gainCompile);
+    auto vSinkCompile = ugraph::make_node<7005>(sinkCompile);
+
+    auto compileGraph = ugraph::Graph(
+        vACompile.output<AudioBuffer>() >> vMixCompile.input<AudioBuffer, 0>(),
+        vBCompile.output<AudioBuffer>() >> vMixCompile.input<AudioBuffer, 1>(),
+        vMixCompile.output<AudioBuffer>() >> vGainCompile.input<AudioBuffer>(),
+        vGainCompile.output<AudioBuffer>() >> vSinkCompile.input<AudioBuffer>()
+    );
+
+    decltype(compileGraph)::graph_data_t compileData;
+    compileGraph.init_graph_data(compileData);
+
+    Parameters compileParams[2];
+    compileGraph.bind_input<7001>(compileParams[0]);
+    compileGraph.bind_input<7002>(compileParams[1]);
+
+    CHECK(compileGraph.all_ios_connected());
+
+    constexpr std::size_t kBlockSize = 64;
+    constexpr std::size_t kIterations = 6000;
+    constexpr std::size_t kWarmupIterations = 128;
+
+    using storage_t = std::array<float, kBlockSize>;
+
+    static constexpr auto compileStorageCount = decltype(compileGraph)::data_count<AudioBuffer>();
+    CHECK(compileStorageCount == 3);
+
+    std::array<storage_t, compileStorageCount> compileStorage {};
+    for (std::size_t i = 0; i < compileStorageCount; ++i) {
+        ugraph::data_at<AudioBuffer>(compileData, i) = compileStorage[i];
+    }
+
+    auto vARuntime = ugraph::make_node<7101>(saRuntime);
+    auto vBRuntime = ugraph::make_node<7102>(sbRuntime);
+    auto vMixRuntime = ugraph::make_node<7103>(mixRuntime);
+    auto vGainRuntime = ugraph::make_node<7104>(gainRuntime);
+    auto vSinkRuntime = ugraph::make_node<7105>(sinkRuntime);
+
+    auto runtimeGraph = ugraph::DynamicGraph(vARuntime, vBRuntime, vMixRuntime, vGainRuntime, vSinkRuntime);
+
+    Parameters runtimeParams[2];
+    CHECK(runtimeGraph.bind_input<7101>(runtimeParams[0]));
+    CHECK(runtimeGraph.bind_input<7102>(runtimeParams[1]));
+
+    storage_t runtimeSourceAStorage {};
+    storage_t runtimeSourceBStorage {};
+    storage_t runtimeMixStorage {};
+    storage_t runtimeGainStorage {};
+
+    AudioBuffer runtimeSourceABuffer { runtimeSourceAStorage };
+    AudioBuffer runtimeSourceBBuffer { runtimeSourceBStorage };
+    AudioBuffer runtimeMixBuffer { runtimeMixStorage };
+    AudioBuffer runtimeGainBuffer { runtimeGainStorage };
+
+    CHECK(runtimeGraph.route(vARuntime.output<AudioBuffer>() >> vMixRuntime.input<AudioBuffer, 0>(), runtimeSourceABuffer));
+    CHECK(runtimeGraph.route(vBRuntime.output<AudioBuffer>() >> vMixRuntime.input<AudioBuffer, 1>(), runtimeSourceBBuffer));
+    CHECK(runtimeGraph.route(vMixRuntime.output<AudioBuffer>() >> vGainRuntime.input<AudioBuffer>(), runtimeMixBuffer));
+    CHECK(runtimeGraph.route(vGainRuntime.output<AudioBuffer>() >> vSinkRuntime.input<AudioBuffer>(), runtimeGainBuffer));
+
+    CHECK(runtimeGraph.all_ios_connected());
+    CHECK(runtimeGraph.compile());
+
+    std::array<storage_t, 3> manualStorage {};
+
+    volatile float consume = 0.f;
+
+    for (std::size_t i = 0; i < kWarmupIterations; ++i) {
+        compileGraph.for_each(
+            [] (auto& module, auto& ctx) {
+                module.process(ctx);
+            }
+        );
+
+        CHECK(runtimeGraph.process());
+
+        saManual.process(manualStorage[0].data(), kBlockSize);
+        sbManual.process(manualStorage[1].data(), kBlockSize);
+        mixManual.process(manualStorage[0].data(), manualStorage[1].data(), manualStorage[2].data(), kBlockSize);
+        gainManual.process(manualStorage[2].data(), manualStorage[0].data(), kBlockSize);
+        sinkManual.process(manualStorage[0].data(), kBlockSize);
+
+        consume += sinkCompile.last_sample + sinkRuntime.last_sample + sinkManual.last_sample;
+    }
+
+    using clock = std::chrono::high_resolution_clock;
+
+    auto t0 = clock::now();
+    for (std::size_t i = 0; i < kIterations; ++i) {
+        compileGraph.for_each(
+            [] (auto& module, auto& ctx) {
+                module.process(ctx);
+            }
+        );
+        consume += sinkCompile.last_sample;
+    }
+    auto t1 = clock::now();
+    auto compileNs = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+
+    auto t2 = clock::now();
+    for (std::size_t i = 0; i < kIterations; ++i) {
+        CHECK(runtimeGraph.process());
+        consume += sinkRuntime.last_sample;
+    }
+    auto t3 = clock::now();
+    auto runtimeNs = std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count();
+
+    auto t4 = clock::now();
+    for (std::size_t i = 0; i < kIterations; ++i) {
+        saManual.process(manualStorage[0].data(), kBlockSize);
+        sbManual.process(manualStorage[1].data(), kBlockSize);
+        mixManual.process(manualStorage[0].data(), manualStorage[1].data(), manualStorage[2].data(), kBlockSize);
+        gainManual.process(manualStorage[2].data(), manualStorage[0].data(), kBlockSize);
+        sinkManual.process(manualStorage[0].data(), kBlockSize);
+        consume += sinkManual.last_sample;
+    }
+    auto t5 = clock::now();
+    auto manualNs = std::chrono::duration_cast<std::chrono::nanoseconds>(t5 - t4).count();
+
+    CHECK(sinkCompile.last_sample == doctest::Approx(0.875f));
+    CHECK(sinkRuntime.last_sample == doctest::Approx(0.875f));
+    CHECK(sinkManual.last_sample == doctest::Approx(0.875f));
+
+    CHECK(sinkCompile.sum == doctest::Approx(0.875f * kBlockSize));
+    CHECK(sinkRuntime.sum == doctest::Approx(0.875f * kBlockSize));
+    CHECK(sinkManual.sum == doctest::Approx(0.875f * kBlockSize));
+
+    REQUIRE(compileNs > 0);
+    REQUIRE(runtimeNs > 0);
+    REQUIRE(manualNs > 0);
+
+    const double compileRatio = static_cast<double>(compileNs) / static_cast<double>(manualNs);
+    const double runtimeRatio = static_cast<double>(runtimeNs) / static_cast<double>(manualNs);
+    const double runtimeVsCompileRatio = static_cast<double>(runtimeNs) / static_cast<double>(compileNs);
+
+    INFO(
+        "compile_ns=" << compileNs
+        << " runtime_ns=" << runtimeNs
+        << " manual_ns=" << manualNs
+        << " compile/manual=" << compileRatio
+        << " runtime/manual=" << runtimeRatio
+        << " runtime/compile=" << runtimeVsCompileRatio
+    );
+
+    std::cout
+        << "compile_ns=" << compileNs
+        << " runtime_ns=" << runtimeNs
+        << " manual_ns=" << manualNs
+        << " compile/manual=" << compileRatio
+        << " runtime/manual=" << runtimeRatio
+        << " runtime/compile=" << runtimeVsCompileRatio
+        << std::endl;
+
+    (void) consume;
+}
+
 #ifndef __clang__
 // Clang builds can show larger variance in the simple wall-clock ratio measurement
 // Skip the perf ratio assertion to avoid spurious failures.

@@ -138,7 +138,7 @@ namespace ugraph {
 
         using tuple_type = typename data_ptrs_tuple_maker<std::make_index_sequence<manifest_t::type_count>>::type;
 
-        tuple_type mDataPtrsTuple;
+        tuple_type mDataPtrsTuple {};
 
     };
 
