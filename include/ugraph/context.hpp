@@ -71,6 +71,20 @@ namespace ugraph {
             return DataSpan<data_t>(std::get<data_array_t<data_t>>(mDataPtrsTuple).data() + input_count<data_t>(), output_count<data_t>());
         }
 
+        template<typename data_t>
+        constexpr inline auto inputs_ptr() const {
+            static_assert(contains<data_t>(), "Type not declared in Manifest");
+            static_assert(input_count<data_t>() > 0, "No input ports for this type");
+            return std::get<data_array_t<data_t>>(mDataPtrsTuple).data();
+        }
+
+        template<typename data_t>
+        constexpr inline auto outputs_ptr() {
+            static_assert(contains<data_t>(), "Type not declared in Manifest");
+            static_assert(output_count<data_t>() > 0, "No output ports for this type");
+            return std::get<data_array_t<data_t>>(mDataPtrsTuple).data() + input_count<data_t>();
+        }
+
         template<typename data_t, std::size_t I = 0>
         constexpr inline bool has_input() const {
             static_assert(contains<data_t>(), "Type not declared in Manifest");
