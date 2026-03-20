@@ -187,6 +187,8 @@ namespace ugraph {
         constexpr const_iterator begin() const { return const_iterator { mData }; }
         constexpr const_iterator end() const { return const_iterator { mData + mSize }; }
 
+        constexpr std::size_t size() const { return mSize; }
+
         constexpr inline T& operator [](std::size_t i) {
             return **(mData + i);
         }
