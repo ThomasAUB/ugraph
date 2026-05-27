@@ -107,7 +107,7 @@ namespace ugraph {
             return std::get<node_index>(mModules);
         }
 
-        template<typename F>
+            template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
         }
@@ -238,6 +238,10 @@ namespace ugraph {
             ugraph::print_pipeline<topology_t>(stream, inGraphName);
         }
 
+        static constexpr bool is_fully_wired() {
+            return is_fully_wired_impl(std::make_index_sequence<topology_t::size()>{});
+        }
+
     private:
 
         template<std::size_t I, typename F>
@@ -310,6 +314,50 @@ namespace ugraph {
                     std::make_index_sequence<node_type_at<Is>::module_type::Manifest::type_count>{}
                 ), ...
                 );
+        }
+
+        template<typename T>
+        struct is_input_binding : std::false_type {};
+
+        template<typename spec_t, std::size_t node_id, std::size_t input_index, typename link_t, bool IsInputBinding = is_input_binding<link_t>::value>
+        struct input_binding_matches : std::false_type {};
+
+        template<typename spec_t, std::size_t node_id, std::size_t input_index, typename link_t>
+        struct input_binding_matches<spec_t, node_id, input_index, link_t, true>
+            : std::bool_constant<
+            std::is_same_v<spec_t, typename link_t::spec_type> &&
+            (link_t::node_type::id() == node_id) &&
+            (link_t::port_type::index() == input_index)
+            > {};
+
+        template<typename spec_t, std::size_t node_id, std::size_t input_index>
+        static constexpr bool has_input_binding() {
+            return (false || ... || input_binding_matches<spec_t, node_id, input_index, edges_t>::value);
+        }
+
+        template<std::size_t node_index, typename spec_t, std::size_t... input_indices>
+        static constexpr bool spec_dependencies_wired_impl(std::index_sequence<input_indices...>) {
+            constexpr std::size_t node_id = topology_t::template id_at<node_index>();
+            return (((traits::template input_index_for<spec_t, node_index, input_indices>() != traits::invalid_index) ||
+                has_input_binding<spec_t, node_id, input_indices>()) && ...);
+        }
+
+        template<std::size_t node_index, typename spec_t>
+        static constexpr bool spec_dependencies_wired() {
+            return spec_dependencies_wired_impl<node_index, spec_t>(std::make_index_sequence<spec_t::input_count>{});
+        }
+
+        template<std::size_t node_index, std::size_t... spec_indices>
+        static constexpr bool node_dependencies_wired_impl(std::index_sequence<spec_indices...>) {
+            using node_manifest = typename node_type_at<node_index>::module_type::Manifest;
+            return (spec_dependencies_wired<node_index, typename node_manifest::template spec_at<spec_indices>>() && ...);
+        }
+
+        template<std::size_t... node_indices>
+        static constexpr bool is_fully_wired_impl(std::index_sequence<node_indices...>) {
+            return (node_dependencies_wired_impl<node_indices>(
+                std::make_index_sequence<node_type_at<node_indices>::module_type::Manifest::spec_count>{}
+            ) && ...);
         }
 
     };

@@ -86,7 +86,11 @@ TEST_CASE("graph data propagation") {
         srcNode.output<MyEvent>() >> sinkNode.input<MyEvent, 0>()
     );
 
-    decltype(graph)::graph_data_t graph_data;
+    using graph_t = decltype(graph);
+
+    static_assert(!graph_t::is_fully_wired(), "Graph should have missing connections");
+
+    graph_t::graph_data_t graph_data;
     graph.init_graph_data(graph_data);
 
     MyData1 md0 = 0;
@@ -138,7 +142,11 @@ TEST_CASE("graph print output") {
         srcNode.output<MyEvent>() >> sinkNode.input<MyEvent>()
     );
 
-    decltype(graph)::graph_data_t dg;
+    using graph_t = decltype(graph);
+
+    static_assert(graph_t::is_fully_wired(), "Graph is missing connections");
+
+    graph_t::graph_data_t dg;
     graph.init_graph_data(dg);
 
     std::ostringstream oss;
