@@ -7,8 +7,15 @@
 
 namespace ugraph::detail {
 
+
+
+
+
+    template<typename Edge, typename = void>
+    struct edge_data_type;
+
     template<typename Edge>
-    struct edge_data_type {
+    struct edge_data_type<Edge, std::void_t<typename Edge::first_type>> {
         using type = typename Edge::first_type::data_type;
     };
 
@@ -94,9 +101,10 @@ namespace ugraph::detail {
         using type = typename type_list_concat<detail::type_list<A..., B...>, Rest...>::type;
     };
 
+
+
     template<typename... edges_t>
     struct data_graph_traits {
-        using topology_t = Topology<edges_t...>;
 
         template<typename T, typename = void>
         struct has_nested_graph_interface : std::false_type {};
@@ -106,7 +114,7 @@ namespace ugraph::detail {
             typename T::vertex_types_list_public,
             typename T::edge_types_list_public,
             typename T::topology_type
-        >> : std::true_type {};
+            >> : std::true_type {};
 
         template<typename node_t, std::size_t port_idx>
         struct synthetic_input_port {
@@ -283,7 +291,7 @@ namespace ugraph::detail {
         static auto make_exits_to_entries(std::index_sequence<S...>)
             -> typename type_list_concat<decltype(make_exit_to_entries_for_source<data_t, src_node_t, src_port_idx, dst_node_t, dst_port_idx, S>(
                 std::make_index_sequence<module_entry_count<typename dst_node_t::module_type>::value>{
-            }))...>::type;
+        }))... > ::type;
 
         template<typename Edge, bool SrcNested, bool DstNested>
         struct expand_edge_types_impl;
@@ -366,12 +374,12 @@ namespace ugraph::detail {
             using dst_node_t = typename detail::edge_traits<Edge>::dst_vertex_t;
             using type = typename type_list_concat<
                 typename remap_edge_list_with_base<
-                    typename src_node_t::module_type::edge_types_list_public,
-                    src_node_t::id()
+                typename src_node_t::module_type::edge_types_list_public,
+                src_node_t::id()
                 >::type,
                 typename remap_edge_list_with_base<
-                    typename dst_node_t::module_type::edge_types_list_public,
-                    dst_node_t::id()
+                typename dst_node_t::module_type::edge_types_list_public,
+                dst_node_t::id()
                 >::type
             >::type;
         };
@@ -400,7 +408,40 @@ namespace ugraph::detail {
             using type = typename fold_flatten_edges<next_t, Rest...>::type;
         };
 
-        using flattened_edges_t = typename fold_flatten_edges<detail::type_list<>, edges_t...>::type;
+        template<typename TL>
+        struct filter_out_data_bindings;
+
+        template<>
+        struct filter_out_data_bindings<detail::type_list<>> { using type = detail::type_list<>; };
+
+        template<typename E, typename... Rest>
+        struct filter_out_data_bindings<detail::type_list<E, Rest...>> {
+            using tail = typename filter_out_data_bindings<detail::type_list<Rest...>>::type;
+            using type = std::conditional_t<
+                detail::is_data_binding<E>::value,
+                tail,
+                typename detail::type_list_prepend<E, tail>::type
+            >;
+        };
+
+        template<typename TL>
+        struct type_list_to_topology;
+
+        template<typename... Es>
+        struct type_list_to_topology<detail::type_list<Es...>> { using type = Topology<Es...>; };
+
+        template<typename TL>
+        struct expand_filtered_edges;
+
+        template<typename... Es>
+        struct expand_filtered_edges<detail::type_list<Es...>> {
+            using type = typename fold_flatten_edges<detail::type_list<>, Es...>::type;
+        };
+
+        using filtered_edge_list_t = typename filter_out_data_bindings<detail::type_list<edges_t...>>::type;
+        using topology_t = typename type_list_to_topology<filtered_edge_list_t>::type;
+
+        using flattened_edges_t = typename expand_filtered_edges<filtered_edge_list_t>::type;
 
         template<std::size_t I>
         using node_type_at = typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type;
@@ -415,55 +456,72 @@ namespace ugraph::detail {
 
         using modules_tuple_t = decltype(make_modules_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
+        template<std::size_t id, typename Edge, bool IsData = detail::is_data_binding<Edge>::value>
+        struct try_edge_module_impl;
+
         template<std::size_t id, typename Edge>
-        static constexpr auto try_edge_module(const Edge& e) {
-            using S = typename detail::edge_traits<Edge>::src_vertex_t;
-            using wanted_module_t = typename topology_t::template find_type_by_id<id>::type::module_type;
-            using wanted_ptr_t = wanted_module_t*;
-
-            using D = typename detail::edge_traits<Edge>::dst_vertex_t;
-
-            auto try_nested_from_src = [] (auto& module) constexpr -> wanted_ptr_t {
-                using module_t = std::decay_t<decltype(module)>;
-                if constexpr (has_nested_graph_interface<module_t>::value) {
-                    if constexpr ((id >= S::id()) && module_t::template contains_node_id<id - S::id()>()) {
-                        if constexpr (std::is_convertible_v<decltype(module.template module_ptr_by_id<id - S::id()>()), wanted_ptr_t>) {
-                            return module.template module_ptr_by_id<id - S::id()>();
-                        }
-                    }
-                }
-                return nullptr;
-                };
-
-            auto try_nested_from_dst = [] (auto& module) constexpr -> wanted_ptr_t {
-                using module_t = std::decay_t<decltype(module)>;
-                if constexpr (has_nested_graph_interface<module_t>::value) {
-                    if constexpr ((id >= D::id()) && module_t::template contains_node_id<id - D::id()>()) {
-                        if constexpr (std::is_convertible_v<decltype(module.template module_ptr_by_id<id - D::id()>()), wanted_ptr_t>) {
-                            return module.template module_ptr_by_id<id - D::id()>();
-                        }
-                    }
-                }
-                return nullptr;
-                };
-
-            if constexpr (S::id() == id) {
-                return &e.first.module();
+        struct try_edge_module_impl<id, Edge, true> {
+            static constexpr auto run(const Edge&) {
+                return (typename topology_t::template find_type_by_id<id>::type::module_type*)nullptr;
             }
-            else {
-                if constexpr (D::id() == id) {
-                    return &e.second.module();
+        };
+
+        template<std::size_t id, typename Edge>
+        struct try_edge_module_impl<id, Edge, false> {
+            static constexpr auto run(const Edge& e) {
+                using S = typename detail::edge_traits<Edge>::src_vertex_t;
+                using wanted_module_t = typename topology_t::template find_type_by_id<id>::type::module_type;
+                using wanted_ptr_t = wanted_module_t*;
+
+                using D = typename detail::edge_traits<Edge>::dst_vertex_t;
+
+                auto try_nested_from_src = [] (auto& module) constexpr -> wanted_ptr_t {
+                    using module_t = std::decay_t<decltype(module)>;
+                    if constexpr (has_nested_graph_interface<module_t>::value) {
+                        if constexpr ((id >= S::id()) && module_t::template contains_node_id<id - S::id()>()) {
+                            if constexpr (std::is_convertible_v<decltype(module.template module_ptr_by_id<id - S::id()>()), wanted_ptr_t>) {
+                                return module.template module_ptr_by_id<id - S::id()>();
+                            }
+                        }
+                    }
+                    return nullptr;
+                    };
+
+                auto try_nested_from_dst = [] (auto& module) constexpr -> wanted_ptr_t {
+                    using module_t = std::decay_t<decltype(module)>;
+                    if constexpr (has_nested_graph_interface<module_t>::value) {
+                        if constexpr ((id >= D::id()) && module_t::template contains_node_id<id - D::id()>()) {
+                            if constexpr (std::is_convertible_v<decltype(module.template module_ptr_by_id<id - D::id()>()), wanted_ptr_t>) {
+                                return module.template module_ptr_by_id<id - D::id()>();
+                            }
+                        }
+                    }
+                    return nullptr;
+                    };
+
+                if constexpr (S::id() == id) {
+                    return &e.first.module();
                 }
                 else {
-                    if (auto* p = try_nested_from_src(e.first.module())) {
-                        return p;
+                    if constexpr (D::id() == id) {
+                        return &e.second.module();
                     }
-                    if (auto* p = try_nested_from_dst(e.second.module())) {
-                        return p;
+                    else {
+                        if (auto* p = try_nested_from_src(e.first.module())) {
+                            return p;
+                        }
+                        if (auto* p = try_nested_from_dst(e.second.module())) {
+                            return p;
+                        }
+                        return (typename topology_t::template find_type_by_id<id>::type::module_type*)nullptr;
                     }
-                    return (typename topology_t::template find_type_by_id<id>::type::module_type*)nullptr;
                 }
             }
+        };
+
+        template<std::size_t id, typename Edge>
+        static constexpr auto try_edge_module(const Edge& e) {
+            return try_edge_module_impl<id, Edge>::run(e);
         }
 
         template<std::size_t id>
