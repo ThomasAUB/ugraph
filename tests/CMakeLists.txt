@@ -14,6 +14,7 @@ set(TARGET_SRC
     graph_nested_tests.cpp
     graph_printer_tests.cpp
     graph_data_count_tests.cpp
+    graph_bind_data_tests.cpp
     manual_bind_tests.cpp
     audio_graph_tests.cpp
 

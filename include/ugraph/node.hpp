@@ -29,8 +29,36 @@
 
 #include <cstddef>
 #include <utility>
+#include "type_traits/port_traits.hpp"
 
 namespace ugraph {
+
+    template<typename data_t, typename input_t>
+    struct InDataBind {
+        data_t* mPtr;
+        input_t mPort;
+    };
+
+    template<typename data_t, typename output_t>
+    struct OutDataBind {
+        data_t* mPtr;
+        output_t mPort;
+    };
+
+    template<typename Bind>
+    struct binding_traits;
+
+    template<typename data_t, typename in_port_t>
+    struct binding_traits<InDataBind<data_t, in_port_t>> {
+        using data_type = data_t;
+        using port_type = in_port_t;
+    };
+
+    template<typename data_t, typename out_port_t>
+    struct binding_traits<OutDataBind<data_t, out_port_t>> {
+        using data_type = data_t;
+        using port_type = out_port_t;
+    };
 
     template<
         std::size_t id,
@@ -95,6 +123,11 @@ namespace ugraph {
             using data_type = T;
             constexpr OutputPort(Node& node) :
                 NodeType<T>::template Port<_index>(node.module()) {}
+            template<typename in_port_t>
+            friend constexpr auto operator>>(const OutputPort& out, const in_port_t& in)
+                -> std::enable_if_t<detail::is_input_port<in_port_t>::value, std::pair<OutputPort, in_port_t>> {
+                return std::pair<OutputPort, in_port_t>{ out, in };
+            }
         };
 
         // single input
@@ -157,10 +190,42 @@ namespace ugraph {
     template<
         typename out_port_t,
         typename in_port_t,
-        typename = std::void_t<typename out_port_t::data_type, typename in_port_t::node_type>
+        typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type, typename in_port_t::node_type>
     >
-    constexpr auto operator >> (const out_port_t& out, const in_port_t& in) {
+    constexpr std::pair<out_port_t, in_port_t> operator>>(const out_port_t& out, const in_port_t& in) {
         return std::pair<out_port_t, in_port_t>{ out, in };
     }
+
+    template<
+        typename data_t,
+        typename in_port_t,
+        typename = std::void_t<typename in_port_t::node_type>,
+        typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
+    >
+    constexpr InDataBind<data_t, in_port_t> operator|(data_t& data, const in_port_t& in) {
+        return InDataBind<data_t, in_port_t>{ &data, in };
+    }
+
+    template<
+        typename out_port_t,
+        typename data_t,
+        typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type>,
+        typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
+    >
+    constexpr OutDataBind<data_t, out_port_t> operator|(const out_port_t& out, data_t& data) {
+        return OutDataBind<data_t, out_port_t>{ &data, out };
+    }
+
+} // namespace ugraph
+
+namespace ugraph::detail {
+    template<typename T>
+    struct is_data_binding : std::false_type {};
+
+    template<typename data_t, typename in_port_t>
+    struct is_data_binding<InDataBind<data_t, in_port_t>> : std::true_type {};
+
+    template<typename data_t, typename out_port_t>
+    struct is_data_binding<OutDataBind<data_t, out_port_t>> : std::true_type {};
 
 } // namespace ugraph

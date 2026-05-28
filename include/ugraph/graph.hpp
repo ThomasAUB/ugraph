@@ -61,6 +61,24 @@ namespace ugraph {
 
         using contexts_tuple_t = decltype(make_contexts_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
+        template<typename E>
+        static constexpr void process_binding_fn(const E& e, Graph* self) {
+            if constexpr (detail::is_data_binding<E>::value) {
+                using bind_t = E;
+                using bt = ::ugraph::binding_traits<bind_t>;
+                using port_t = typename bt::port_type;
+                using data_t = typename bt::data_type;
+                constexpr std::size_t node_id = port_t::node_type::id();
+                constexpr std::size_t port_index = port_t::index();
+                if constexpr (detail::is_output_port<port_t>::value) {
+                    self->template bind_output_at<node_id, port_index, data_t>(*e.mPtr);
+                }
+                else if constexpr (detail::is_input_port<port_t>::value) {
+                    self->template bind_input_at<node_id, port_index, data_t>(*e.mPtr);
+                }
+            }
+        }
+
         template<std::size_t... I>
         static constexpr auto make_graph_data_t(std::index_sequence<I...>) ->
             std::tuple<
@@ -81,7 +99,9 @@ namespace ugraph {
         using edge_types_list_public = typename traits::flattened_edges_t;
 
         constexpr Graph(const edges_t&... es) :
-            mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {}
+            mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
+            (process_binding_fn(es, this), ...);
+        }
 
         static constexpr auto ids() { return topology_t::ids(); }
         static constexpr std::size_t size() { return topology_t::size(); }
@@ -283,11 +303,13 @@ namespace ugraph {
             std::array<data_t, traits::template coloring_t<data_t>::data_count()>& arr,
             std::index_sequence<ps...>
         ) {
-            (ctx.template set_input_ptr<ps, data_t>(
-                (traits::template input_index_for<data_t, node_index, ps>() != traits::invalid_index)
-                ? &arr[traits::template input_index_for<data_t, node_index, ps>()]
-                : nullptr
-            ), ...);
+            (([&] {
+                auto cur = ctx.template inputs_ptr<data_t>();
+                data_t* desired = (traits::template input_index_for<data_t, node_index, ps>() != traits::invalid_index)
+                    ? &arr[traits::template input_index_for<data_t, node_index, ps>()]
+                    : nullptr;
+                if (cur[ps] == nullptr) ctx.template set_input_ptr<ps, data_t>(desired);
+                }()), ...);
         }
 
         template<std::size_t node_index, typename data_t, typename ctx_t, std::size_t... ps>
@@ -296,11 +318,13 @@ namespace ugraph {
             std::array<data_t, traits::template coloring_t<data_t>::data_count()>& arr,
             std::index_sequence<ps...>
         ) {
-            (ctx.template set_output_ptr<ps, data_t>(
-                (traits::template output_index_for<data_t, node_index, ps>() != traits::invalid_index)
-                ? &arr[traits::template output_index_for<data_t, node_index, ps>()]
-                : nullptr
-            ), ...);
+            (([&] {
+                auto cur = ctx.template outputs_ptr<data_t>();
+                data_t* desired = (traits::template output_index_for<data_t, node_index, ps>() != traits::invalid_index)
+                    ? &arr[traits::template output_index_for<data_t, node_index, ps>()]
+                    : nullptr;
+                if (cur[ps] == nullptr) ctx.template set_output_ptr<ps, data_t>(desired);
+                }()), ...);
         }
 
         template<std::size_t... Is>

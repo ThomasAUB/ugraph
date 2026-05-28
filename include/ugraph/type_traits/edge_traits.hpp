@@ -31,8 +31,11 @@
 
 namespace ugraph::detail {
 
+    template<typename E, typename = void>
+    struct edge_traits;
+
     template<typename E>
-    struct edge_traits {
+    struct edge_traits<E, std::void_t<typename std::decay_t<E>::first_type, typename std::decay_t<E>::second_type>> {
         using edge_t = std::decay_t<E>;
         using src_port_t = typename edge_t::first_type;
         using dst_port_t = typename edge_t::second_type;
