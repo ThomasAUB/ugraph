@@ -15,19 +15,28 @@ struct Add {
 
 TEST_CASE("bind_graph_data external") {
 
-    Add addEntry;
-    Add addMid;
+    Add add;
 
-    auto entryNode = ugraph::make_node<100>(addEntry);
-    auto midNode = ugraph::make_node<101>(addMid);
+    auto entry1Node = ugraph::make_node<100>(add);
+    auto end1Node = ugraph::make_node<101>(add);
+    auto end2Node = ugraph::make_node<102>(add);
+    auto entry2Node = ugraph::make_node<103>(add);
 
     int a;
     int b;
 
     ugraph::Graph graph(
-        a | entryNode.input<int>(),
-        entryNode.output<int>() >> midNode.input<int>(),
-        midNode.output<int>() | b
+
+        a | entry1Node.input<int>(),
+
+        a | entry2Node.input<int>(),
+
+        entry1Node.output<int>() >> end1Node.input<int>(),
+        entry2Node.output<int>() >> end2Node.input<int>(),
+
+        end1Node.output<int>() | b,
+        end2Node.output<int>() | a
+
     );
 
     using graph_t = decltype(graph);
@@ -44,6 +53,7 @@ TEST_CASE("bind_graph_data external") {
         }
     );
 
+    CHECK(a == 7);
     CHECK(b == 7);
 
 }
