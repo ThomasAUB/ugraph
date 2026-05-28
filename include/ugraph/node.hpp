@@ -202,7 +202,7 @@ namespace ugraph {
         typename = std::void_t<typename in_port_t::node_type>,
         typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
     >
-    constexpr InDataBind<data_t, in_port_t> operator>>(data_t& data, const in_port_t& in) {
+    constexpr InDataBind<data_t, in_port_t> operator|(data_t& data, const in_port_t& in) {
         return InDataBind<data_t, in_port_t>{ &data, in };
     }
 
@@ -212,7 +212,7 @@ namespace ugraph {
         typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type>,
         typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
     >
-    constexpr OutDataBind<data_t, out_port_t> operator>>(const out_port_t& out, data_t& data) {
+    constexpr OutDataBind<data_t, out_port_t> operator|(const out_port_t& out, data_t& data) {
         return OutDataBind<data_t, out_port_t>{ &data, out };
     }
 

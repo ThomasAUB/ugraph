@@ -25,9 +25,9 @@ TEST_CASE("bind_graph_data external") {
     int b;
 
     ugraph::Graph graph(
-        a >> entryNode.input<int>(),
+        a | entryNode.input<int>(),
         entryNode.output<int>() >> midNode.input<int>(),
-        midNode.output<int>() >> b
+        midNode.output<int>() | b
     );
 
     using graph_t = decltype(graph);
