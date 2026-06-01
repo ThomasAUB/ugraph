@@ -59,5 +59,5 @@ static constexpr auto runGraph(int v) {
 
 
 TEST_CASE("compile-time graph constexpr construction") {
-    static_assert(runGraph(16) == 32, "iofg");
+    static_assert(runGraph(16) == 32, "Compile-time run failed");
 }
