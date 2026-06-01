@@ -42,6 +42,9 @@
 
 namespace ugraph {
 
+    template<typename data_t, typename tuple_t, std::size_t I = 0, bool InRange = (I < std::tuple_size_v<tuple_t>)>
+    struct tuple_index_of_type_impl;
+
     template<typename... edges_t>
     class Graph {
 
@@ -418,9 +421,6 @@ namespace ugraph {
         }
 
     };
-
-    template<typename data_t, typename tuple_t, std::size_t I = 0, bool InRange = (I < std::tuple_size_v<tuple_t>)>
-    struct tuple_index_of_type_impl;
 
     template<typename data_t, typename tuple_t, std::size_t I>
     struct tuple_index_of_type_impl<data_t, tuple_t, I, true> {
