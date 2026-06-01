@@ -133,11 +133,6 @@ namespace ugraph {
             using spec_type = typename manifest_t::template spec_for<T>;
             constexpr OutputPort(Node& node) :
                 NodeType<T>::template Port<_index>(node.module()) {}
-            template<typename in_port_t>
-            friend constexpr auto operator>>(const OutputPort& out, const in_port_t& in)
-                -> std::enable_if_t<detail::is_input_port<in_port_t>::value, std::pair<OutputPort, in_port_t>> {
-                return std::pair<OutputPort, in_port_t>{ out, in };
-            }
         };
 
         // single input
@@ -195,35 +190,6 @@ namespace ugraph {
     >
     constexpr auto make_node(module_t& module) {
         return Node<id, module_t, manifest_t, _priority>(module);
-    }
-
-    template<
-        typename out_port_t,
-        typename in_port_t,
-        typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type, typename in_port_t::node_type>
-    >
-    constexpr std::pair<out_port_t, in_port_t> operator>>(const out_port_t& out, const in_port_t& in) {
-        return std::pair<out_port_t, in_port_t>{ out, in };
-    }
-
-    template<
-        typename data_t,
-        typename in_port_t,
-        typename = std::void_t<typename in_port_t::node_type>,
-        typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
-    >
-    constexpr InDataBind<data_t, in_port_t> operator|(data_t& data, const in_port_t& in) {
-        return InDataBind<data_t, in_port_t>{ &data, in };
-    }
-
-    template<
-        typename out_port_t,
-        typename data_t,
-        typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type>,
-        typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
-    >
-    constexpr OutDataBind<data_t, out_port_t> operator|(const out_port_t& out, data_t& data) {
-        return OutDataBind<data_t, out_port_t>{ &data, out };
     }
 
 } // namespace ugraph
