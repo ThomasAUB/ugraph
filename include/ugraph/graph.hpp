@@ -46,7 +46,7 @@ namespace ugraph {
     struct tuple_index_of_type_impl;
 
     template<typename... edges_t>
-    class Graph {
+    class ExternalDataGraph {
 
         using traits = detail::data_graph_traits<edges_t...>;
         using topology_t = typename traits::topology_t;
@@ -72,7 +72,7 @@ namespace ugraph {
         using contexts_tuple_t = decltype(make_contexts_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
         template<typename E>
-        static constexpr void process_binding_fn(const E& e, Graph* self) {
+        static constexpr void process_binding_fn(const E& e, ExternalDataGraph* self) {
             if constexpr (detail::is_data_binding<E>::value) {
                 using bind_t = E;
                 using bt = ::ugraph::binding_traits<bind_t>;
@@ -110,16 +110,11 @@ namespace ugraph {
         using edge_types_list_public = typename traits::flattened_edges_t;
         using graph_data_t = decltype(make_graph_data_t(std::make_index_sequence<traits::key_count>{}));
 
-    private:
-
-        graph_data_t mGraphData {};
-
     public:
 
-        constexpr Graph(const edges_t&... es) :
+        constexpr ExternalDataGraph(const edges_t&... es) :
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
             (process_binding_fn(es, this), ...);
-            init_graph_data();
 
             static_assert(
                 is_fully_wired_impl(std::make_index_sequence<topology_t::size()>{}),
@@ -159,8 +154,8 @@ namespace ugraph {
             return traits::template coloring_t<key_t>::data_count();
         }
 
-        constexpr graph_data_t& graph_data() {
-            return mGraphData;
+        constexpr void init(graph_data_t& graphData) {
+            init_graph_data(graphData);
         }
 
         template<typename stream_t>
@@ -242,27 +237,27 @@ namespace ugraph {
             (for_each_at<I>(std::forward<F>(f)), ...);
         }
 
-        constexpr void init_graph_data() {
-            init_graph_data_impl(std::make_index_sequence<topology_t::size()>{});
+        constexpr void init_graph_data(graph_data_t& graphData) {
+            init_graph_data_impl(graphData, std::make_index_sequence<topology_t::size()>{});
         }
 
         template<std::size_t node_index, std::size_t... tidx>
-        constexpr void init_node_types(std::index_sequence<tidx...>) {
+        constexpr void init_node_types(graph_data_t& graphData, std::index_sequence<tidx...>) {
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             auto& ctx = std::get<node_index>(mContexts);
-            (init_type<node_index, typename node_manifest::template spec_at<tidx>>(ctx), ...);
+            (init_type<node_index, typename node_manifest::template spec_at<tidx>>(graphData, ctx), ...);
         }
 
         template<std::size_t node_index, typename spec_t, typename ctx_t>
-        constexpr void init_type(ctx_t& ctx) {
+        constexpr void init_type(graph_data_t& graphData, ctx_t& ctx) {
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;;
             using data_t = typename detail::io_traits<spec_t>::type;
             using key_t = typename manifest_t::template key_for<spec_t>;
             constexpr std::size_t manifest_index = tuple_index_of_type_impl<key_t, graph_data_t>::value;
 
-            auto& arr = std::get<manifest_index>(mGraphData).data;
+            auto& arr = std::get<manifest_index>(graphData).data;
 
             constexpr std::size_t in_count = node_manifest::template input_count<spec_t>();
             init_inputs_impl<node_index, spec_t>(ctx, arr, std::make_index_sequence<in_count>{});
@@ -278,12 +273,10 @@ namespace ugraph {
             std::index_sequence<ps...>
         ) {
             (([&] {
-                auto cur = ctx.template inputs_ptr<spec_t>();
                 constexpr std::size_t data_index = traits::template input_index_for<typename manifest_t::template key_for<spec_t>, node_index, ps>();
-                auto* desired = (data_index != traits::invalid_index)
-                    ? &arr[data_index]
-                    : nullptr;
-                if (cur[ps] == nullptr) ctx.template set_input_ptr<ps, spec_t>(desired);
+                if constexpr (data_index != traits::invalid_index) {
+                    ctx.template set_input_ptr<ps, spec_t>(&arr[data_index]);
+                }
                 }()), ...);
         }
 
@@ -294,19 +287,18 @@ namespace ugraph {
             std::index_sequence<ps...>
         ) {
             (([&] {
-                auto cur = ctx.template outputs_ptr<spec_t>();
                 constexpr std::size_t data_index = traits::template output_index_for<typename manifest_t::template key_for<spec_t>, node_index, ps>();
-                auto* desired = (data_index != traits::invalid_index)
-                    ? &arr[data_index]
-                    : nullptr;
-                if (cur[ps] == nullptr) ctx.template set_output_ptr<ps, spec_t>(desired);
+                if constexpr (data_index != traits::invalid_index) {
+                    ctx.template set_output_ptr<ps, spec_t>(&arr[data_index]);
+                }
                 }()), ...);
         }
 
         template<std::size_t... Is>
-        constexpr void init_graph_data_impl(std::index_sequence<Is...>) {
+        constexpr void init_graph_data_impl(graph_data_t& graphData, std::index_sequence<Is...>) {
             (
                 init_node_types<Is>(
+                    graphData,
                     std::make_index_sequence<node_type_at<Is>::module_type::Manifest::spec_count>{}
                 ), ...
                 );
@@ -424,6 +416,36 @@ namespace ugraph {
 
     };
 
+    template<typename... edges_t>
+    class Graph : public ExternalDataGraph<edges_t...> {
+        using base_t = ExternalDataGraph<edges_t...>;
+
+    public:
+
+        using typename base_t::topology_type;
+        using typename base_t::Manifest;
+        using typename base_t::vertex_types_list_public;
+        using typename base_t::edge_types_list_public;
+        using typename base_t::graph_data_t;
+
+        constexpr Graph(const edges_t&... es) :
+            base_t(es...) {
+            this->init(mGraphData);
+        }
+
+        constexpr graph_data_t& graph_data() {
+            return mGraphData;
+        }
+
+        constexpr const graph_data_t& graph_data() const {
+            return mGraphData;
+        }
+
+    private:
+
+        graph_data_t mGraphData {};
+    };
+
     template<typename data_t, typename tuple_t, std::size_t I>
     struct tuple_index_of_type_impl<data_t, tuple_t, I, true> {
         using arr_t = std::tuple_element_t<I, tuple_t>;
@@ -446,6 +468,9 @@ namespace ugraph {
         auto& arr = std::get<index>(graph_data).data;
         return arr[i];
     }
+
+    template<typename E0, typename... ERest>
+    ExternalDataGraph(E0 const&, ERest const&...) -> ExternalDataGraph<std::decay_t<E0>, std::decay_t<ERest>...>;
 
     template<typename E0, typename... ERest>
     Graph(E0 const&, ERest const&...) -> Graph<std::decay_t<E0>, std::decay_t<ERest>...>;

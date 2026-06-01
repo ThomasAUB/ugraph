@@ -6,7 +6,8 @@
 Header‑only C++17 utilities for *static* direct acyclic graphs:
 
 * `Topology` – compile‑time topological ordering & cycle detection (no storage, no allocations)
-* `Graph` – runtime traversal + minimal reusable buffer slot assignment
+* `ExternalDataGraph` – runtime traversal + explicit external buffer storage
+* `Graph` – owning runtime graph wrapper with built-in buffer storage
 
 Single include:
 ```cpp
@@ -129,6 +130,11 @@ Builds a *runtime* data-graph of nodes with:
 * Port-aware dataflow traversal
 * Minimal buffer “slot” reuse via interval coloring (computes the minimum number of data instances needed for the pipeline)
 
+There are two runtime graph flavors:
+
+* `ugraph::ExternalDataGraph<...>` stores graph structure and contexts, but takes its `graph_data_t` explicitly through `init(graphData)`.
+* `ugraph::Graph<...>` inherits from `ExternalDataGraph`, owns its `graph_data_t`, and calls `init(...)` automatically during construction.
+
 ### Defining Runtime Nodes
 
 ```cpp
@@ -199,6 +205,37 @@ auto g = ugraph::Graph(
 // Access the owned storage when you need to seed buffer-backed values.
 auto& data = g.graph_data();
 ```
+
+### Shared External Storage
+
+Use `ExternalDataGraph` when multiple graph instances should reuse the same `graph_data_t`.
+
+```cpp
+using shared_graph_t = ugraph::ExternalDataGraph<
+    decltype(nSrc.output<int>() >> nMerger.input<int, 0>()),
+    decltype(nSrc.output<int>() >> nMerger.input<int, 1>()),
+    decltype(nMerger.output<int>() >> nSnk.input<int>())
+>;
+
+shared_graph_t::graph_data_t sharedData;
+
+auto g0 = shared_graph_t(
+    nSrc.output<int>() >> nMerger.input<int, 0>(),
+    nSrc.output<int>() >> nMerger.input<int, 1>(),
+    nMerger.output<int>() >> nSnk.input<int>()
+);
+
+auto g1 = shared_graph_t(
+    nSrc.output<int>() >> nMerger.input<int, 0>(),
+    nSrc.output<int>() >> nMerger.input<int, 1>(),
+    nMerger.output<int>() >> nSnk.input<int>()
+);
+
+g0.init(sharedData);
+g1.init(sharedData);
+```
+
+After `init(sharedData)`, the graph contexts point into the provided storage. `ExternalDataGraph` does not own or retain a separate data instance.
 
 ### Executing the Pipeline
 
@@ -311,7 +348,8 @@ These options let you supply or capture data for nodes that are intentionally le
 | Compile-time id| `NodeTag<ID, Module, Priority>`        | ID + payload type (no storage)        |
 | Runtime node   | `Node<ID, Module, Manifest, Priority>` | Wraps user instance + port counts     |
 | Static graph   | `Topology<Edges...>`                   | Ordering, cycle check, visitation     |
-| Runtime view   | `Graph<Edges...>`                      | Traversal + minimal buffer slot reuse |
+| External-storage graph | `ExternalDataGraph<Edges...>` | Traversal + explicit external storage |
+| Owning runtime graph | `Graph<Edges...>`                | ExternalDataGraph + owned storage     |
 
 ---
 

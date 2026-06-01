@@ -152,3 +152,67 @@ TEST_CASE("graph print output") {
     CHECK(oss.str() == expected);
 
 }
+
+TEST_CASE("external data graph reuses external graph data") {
+
+    Source srcA;
+    Module1 m1A;
+    Sink sinkA;
+
+    Source srcB;
+    Module1 m1B;
+    Sink sinkB;
+
+    auto srcNodeA = ugraph::make_node<100>(srcA);
+    auto m1NodeA = ugraph::make_node<101>(m1A);
+    auto sinkNodeA = ugraph::make_node<102>(sinkA);
+
+    using shared_graph_t = ugraph::ExternalDataGraph<
+        decltype(srcNodeA.output<MyData1>() >> m1NodeA.input<MyData1>()),
+        decltype(m1NodeA.output<MyData1>() >> sinkNodeA.input<MyData1, 0>()),
+        decltype(srcNodeA.output<MyData1>() >> sinkNodeA.input<MyData1, 1>()),
+        decltype(srcNodeA.output<MyEvent>() >> sinkNodeA.input<MyEvent>())
+    >;
+
+    shared_graph_t::graph_data_t sharedData;
+
+    shared_graph_t graphA(
+        srcNodeA.output<MyData1>() >> m1NodeA.input<MyData1>(),
+        m1NodeA.output<MyData1>() >> sinkNodeA.input<MyData1, 0>(),
+        srcNodeA.output<MyData1>() >> sinkNodeA.input<MyData1, 1>(),
+        srcNodeA.output<MyEvent>() >> sinkNodeA.input<MyEvent>()
+    );
+    graphA.init(sharedData);
+
+    auto srcNodeB = ugraph::make_node<100>(srcB);
+    auto m1NodeB = ugraph::make_node<101>(m1B);
+    auto sinkNodeB = ugraph::make_node<102>(sinkB);
+
+    shared_graph_t graphB(
+        srcNodeB.output<MyData1>() >> m1NodeB.input<MyData1>(),
+        m1NodeB.output<MyData1>() >> sinkNodeB.input<MyData1, 0>(),
+        srcNodeB.output<MyData1>() >> sinkNodeB.input<MyData1, 1>(),
+        srcNodeB.output<MyEvent>() >> sinkNodeB.input<MyEvent>()
+    );
+    graphB.init(sharedData);
+
+    srcA.event_value = 123;
+    srcB.event_value = 456;
+
+    graphA.for_each(
+        [] (auto& n, auto& ctx) {
+            n.process(ctx);
+        }
+    );
+
+    graphB.for_each(
+        [] (auto& n, auto& ctx) {
+            n.process(ctx);
+        }
+    );
+
+    auto& sharedEvents = ugraph::data_at<MyEvent>(sharedData, 0);
+    REQUIRE(sharedEvents.size() == 2);
+    CHECK(sharedEvents[0] == 123);
+    CHECK(sharedEvents[1] == 456);
+}
