@@ -29,8 +29,8 @@ TEST_CASE("type name test") {
 
 struct Stage { const char* name; };
 
-TEST_CASE("graph view print test") {
-    // Use a compile-time Topology for printing (GraphView removed)
+TEST_CASE("graph print test") {
+    // Use a compile-time Topology for printing.
     using src1 = ugraph::NodeTag<101, Stage>;
     using src2 = ugraph::NodeTag<102, Stage>;
     using m = ugraph::NodeTag<103, Stage>;

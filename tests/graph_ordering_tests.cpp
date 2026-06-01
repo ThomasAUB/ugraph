@@ -9,7 +9,7 @@ struct LStageA { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 0, 1
 struct LStageB { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 1, 1, false> >; const char* name; int i = 0; };
 struct LStageC { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 1, 0> >; const char* name; int i = 0; };
 
-TEST_CASE("graph_view basic linear ordering") {
+TEST_CASE("graph basic linear ordering") {
     LStageA sa { "A" };
     LStageB sb { "B" };
     LStageC sc { "C" };
@@ -36,7 +36,7 @@ TEST_CASE("graph_view basic linear ordering") {
     CHECK(order[2] == 'C');
 }
 
-TEST_CASE("graph_view fork-join ordering") {
+TEST_CASE("graph fork-join ordering") {
     struct Merge { using Manifest = ugraph::Manifest< ugraph::IO<const char*, 2, 1> >; const char* name; };
     LStageA src { "src" };
     LStageB b1 { "b1" };
@@ -71,7 +71,7 @@ TEST_CASE("graph_view fork-join ordering") {
     CHECK(find_pos("m") < find_pos("snk"));
 }
 
-TEST_CASE("graph_view for_each vs apply equivalence and mutation") {
+TEST_CASE("graph for_each vs apply equivalence and mutation") {
     LStageA sa { "A" };
     LStageB sb { "B" };
 

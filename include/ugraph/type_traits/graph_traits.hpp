@@ -5,16 +5,6 @@
 
 #include "graph_coloring.hpp"
 
-namespace ugraph {
-    template<typename... edges_t>
-    class Graph;
-
-    template<std::size_t id, typename Module>
-    constexpr std::nullptr_t nested_module_ptr(Module&) {
-        return nullptr;
-    }
-}
-
 namespace ugraph::detail {
 
 
@@ -510,11 +500,10 @@ namespace ugraph::detail {
             static constexpr wanted_ptr_t try_nested_module(Module& module) {
                 using module_t = std::decay_t<Module>;
                 constexpr std::size_t nested_id = id - Node::id();
-                using ugraph::nested_module_ptr;
                 if constexpr (has_nested_graph_interface<module_t>::value) {
                     if constexpr ((id >= Node::id()) && module_t::topology_type::template has_id<nested_id>()) {
-                        if constexpr (std::is_convertible_v<decltype(nested_module_ptr<nested_id>(module)), wanted_ptr_t>) {
-                            return nested_module_ptr<nested_id>(module);
+                        if constexpr (std::is_convertible_v<decltype(module.template module_ptr_by_id<nested_id>()), wanted_ptr_t>) {
+                            return module.template module_ptr_by_id<nested_id>();
                         }
                     }
                 }

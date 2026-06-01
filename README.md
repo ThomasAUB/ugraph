@@ -233,9 +233,11 @@ Lightweight helpers produce a mermaid-compatible flowchart for a `Topology` or `
 Include the headers via the single-include `ugraph.hpp`, then call:
 
 ```cpp
-// Member helpers (simple):
+// Graph member helper:
 g.print(std::cout, "MyGraph");
-g.print_pipeline(std::cout, "MyPipeline");
+
+// Free helper for pipeline-style rendering:
+ugraph::print_pipeline<decltype(g)>(std::cout, "MyPipeline");
 ```
 
 The output is wrapped in a fenced mermaid block suitable for embedding in Markdown.
@@ -267,8 +269,6 @@ The `strict` flag controls which ports participate in that check:
 
 - `strict == true`: the spec must be wired according to the graph rules.
 - `strict == false`: the spec is treated as optional and does not make the graph fail the compile-time completeness check.
-
-`Graph::is_fully_wired()` follows the same rules, so its result matches the constructor's compile-time validation logic.
 
 This compile-time enforcement helps catch wiring mistakes early in pipelines.
 

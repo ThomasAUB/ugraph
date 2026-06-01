@@ -134,7 +134,7 @@ namespace ugraph {
         template<std::size_t node_id>
         constexpr auto module_ptr_by_id()
             -> typename topology_t::template find_type_by_id<node_id>::type::module_type* {
-            static_assert(contains_node_id<node_id>(), "Invalid node id");
+            static_assert(topology_t::template has_id<node_id>(), "Invalid node id");
             constexpr std::size_t node_index = [] () constexpr {
                 constexpr auto ids = topology_t::ids();
                 for (std::size_t i = 0; i < topology_t::size(); ++i) {
@@ -169,9 +169,6 @@ namespace ugraph {
         }
 
     private:
-
-        template<std::size_t node_id>
-        static constexpr bool contains_node_id() { return topology_t::template has_id<node_id>(); }
 
         template<std::size_t node_id, std::size_t output_index, typename key_t, typename data_t>
         constexpr void bind_output_key_at(data_t& data) {
@@ -452,11 +449,5 @@ namespace ugraph {
 
     template<typename E0, typename... ERest>
     Graph(E0 const&, ERest const&...) -> Graph<std::decay_t<E0>, std::decay_t<ERest>...>;
-
-    template<std::size_t node_id, typename... edges_t>
-    constexpr auto nested_module_ptr(Graph<edges_t...>& graph)
-        -> typename Graph<edges_t...>::topology_type::template find_type_by_id<node_id>::type::module_type* {
-        return graph.template module_ptr_by_id<node_id>();
-    }
 
 } // namespace ugraph
