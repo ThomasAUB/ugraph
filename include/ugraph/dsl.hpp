@@ -27,10 +27,40 @@
 
 #pragma once
 
-#include "ugraph/node.hpp"
-#include "ugraph/dsl.hpp"
-#include "ugraph/graph.hpp"
-#include "ugraph/topology.hpp"
-#include "ugraph/manifest.hpp"
-#include "ugraph/node_tag.hpp"
-#include "ugraph/graph_printer.hpp"
+#include <type_traits>
+#include <utility>
+
+#include "node.hpp"
+
+namespace ugraph {
+
+    template<
+        typename out_port_t,
+        typename in_port_t,
+        typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type, typename in_port_t::node_type>
+    >
+    constexpr std::pair<out_port_t, in_port_t> operator>>(const out_port_t& out, const in_port_t& in) {
+        return std::pair<out_port_t, in_port_t>{ out, in };
+    }
+
+    template<
+        typename data_t,
+        typename in_port_t,
+        typename = std::void_t<typename in_port_t::node_type>,
+        typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
+    >
+    constexpr InDataBind<data_t, in_port_t> operator|(data_t& data, const in_port_t& in) {
+        return InDataBind<data_t, in_port_t>{ &data, in };
+    }
+
+    template<
+        typename out_port_t,
+        typename data_t,
+        typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type>,
+        typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
+    >
+    constexpr OutDataBind<data_t, out_port_t> operator|(const out_port_t& out, data_t& data) {
+        return OutDataBind<data_t, out_port_t>{ &data, out };
+    }
+
+} // namespace ugraph
