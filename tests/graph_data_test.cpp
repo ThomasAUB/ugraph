@@ -90,9 +90,6 @@ TEST_CASE("graph data propagation") {
 
     static_assert(!graph_t::is_fully_wired(), "Graph should have missing connections");
 
-    graph_t::graph_data_t graph_data;
-    graph.init_graph_data(graph_data);
-
     MyData1 md0 = 0;
     graph.bind_input<100>(md0);
 
@@ -145,9 +142,6 @@ TEST_CASE("graph print output") {
     using graph_t = decltype(graph);
 
     static_assert(graph_t::is_fully_wired(), "Graph is missing connections");
-
-    graph_t::graph_data_t dg;
-    graph.init_graph_data(dg);
 
     std::ostringstream oss;
     graph.print(oss);

@@ -38,9 +38,6 @@ TEST_CASE("manual bind graph") {
         entryNode.output<input_data_t>() >> outputNode2.input<input_data_t>()
     );
 
-    decltype(graph)::graph_data_t dg;
-    graph.init_graph_data(dg);
-
     CHECK(!graph.all_ios_connected());
 
     input_data_t entry = 0;

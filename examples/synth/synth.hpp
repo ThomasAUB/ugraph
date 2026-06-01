@@ -64,7 +64,6 @@ struct Synth {
     static constexpr std::size_t mixer_node_id = 9000;
 
     Synth() {
-        mGraph.init_graph_data(mSynthGraphData);
         mGraph.bind_input<manager_node_id>(mTriggers);
         mGraph.bind_output<mixer_node_id>(mOutputBuffer);
         // Reserve triggers to avoid heap allocations on the audio thread
@@ -120,7 +119,7 @@ private:
         mPrevBufferSize = size;
 
         for (std::size_t i = 0; i < mSynthBufferStorage.size(); i++) {
-            ugraph::data_at<AudioBuff>(mSynthGraphData, i) = { mSynthBufferStorage[i].data(), size };
+            ugraph::data_at<AudioBuff>(mGraph.graph_data(), i) = { mSynthBufferStorage[i].data(), size };
         }
 
     }
@@ -151,8 +150,6 @@ private:
     std::array<buffer_t, synth_buffer_count> mSynthBufferStorage;
 
     synth_graph_t mGraph = makeGraph(mVoiceMgr, mOscillators, mEnvelopes, mGains, mMixer);
-
-    typename synth_graph_t::graph_data_t mSynthGraphData;
 
     std::size_t mPrevBufferSize = 0;
 

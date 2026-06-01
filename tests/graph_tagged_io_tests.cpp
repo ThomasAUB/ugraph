@@ -46,9 +46,6 @@ TEST_CASE("Graph routes data using TaggedIO tags") {
     using g_t = decltype(g);
     CHECK(g_t::is_fully_wired());
 
-    g_t::graph_data_t data;
-    g.init_graph_data(data);
-
     g.for_each([] (auto& n, auto& ctx) { n.process(ctx); });
 
     CHECK(c.a == 10);

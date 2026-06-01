@@ -195,11 +195,9 @@ auto g = ugraph::Graph(
     nMerger.output<int>() >> nSnk.input<int>()
 );
 
-// Instantiate runtime storage for node IO and minimal buffer slots
-decltype(g)::graph_data_t data;
-
-// Initialize internal pointers/slots for the graph
-g.init_graph_data(data);
+// Graph-owned storage is initialized during construction.
+// Access the owned storage when you need to seed buffer-backed values.
+auto& data = g.graph_data();
 ```
 
 ### Executing the Pipeline

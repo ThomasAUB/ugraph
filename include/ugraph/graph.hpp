@@ -93,9 +93,9 @@ namespace ugraph {
         static constexpr auto make_graph_data_t(std::index_sequence<I...>) ->
             std::tuple<
             graph_data_slot<
-                typename traits::template key_type_at<I>,
-                typename manifest_t::template data_type_for<typename traits::template key_type_at<I>>,
-                traits::template coloring_t<typename traits::template key_type_at<I>>::data_count()
+            typename traits::template key_type_at<I>,
+            typename manifest_t::template data_type_for<typename traits::template key_type_at<I>>,
+            traits::template coloring_t<typename traits::template key_type_at<I>>::data_count()
             >...
             >;
 
@@ -108,10 +108,18 @@ namespace ugraph {
         using Manifest = manifest_t;
         using vertex_types_list_public = typename topology_t::vertex_types_list_public;
         using edge_types_list_public = typename traits::flattened_edges_t;
+        using graph_data_t = decltype(make_graph_data_t(std::make_index_sequence<traits::key_count>{}));
+
+    private:
+
+        graph_data_t mGraphData {};
+
+    public:
 
         constexpr Graph(const edges_t&... es) :
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
             (process_binding_fn(es, this), ...);
+            init_graph_data();
         }
 
         static constexpr auto ids() { return topology_t::ids(); }
@@ -149,10 +157,12 @@ namespace ugraph {
             return traits::template coloring_t<key_t>::data_count();
         }
 
-        using graph_data_t = decltype(make_graph_data_t(std::make_index_sequence<traits::key_count>{}));
+        constexpr graph_data_t& graph_data() {
+            return mGraphData;
+        }
 
-        constexpr void init_graph_data(graph_data_t& graph_data) {
-            init_graph_data_impl(graph_data, std::make_index_sequence<topology_t::size()>{});
+        constexpr const graph_data_t& graph_data() const {
+            return mGraphData;
         }
 
         template<std::size_t node_id, typename data_t>
@@ -305,23 +315,27 @@ namespace ugraph {
             (for_each_at<I>(std::forward<F>(f)), ...);
         }
 
+        constexpr void init_graph_data() {
+            init_graph_data_impl(std::make_index_sequence<topology_t::size()>{});
+        }
+
         template<std::size_t node_index, std::size_t... tidx>
-        constexpr void init_node_types(graph_data_t& graph_data, std::index_sequence<tidx...>) {
+        constexpr void init_node_types(std::index_sequence<tidx...>) {
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             auto& ctx = std::get<node_index>(mContexts);
-            (init_type<node_index, typename node_manifest::template spec_at<tidx>>(graph_data, ctx), ...);
+            (init_type<node_index, typename node_manifest::template spec_at<tidx>>(ctx), ...);
         }
 
         template<std::size_t node_index, typename spec_t, typename ctx_t>
-        constexpr void init_type(graph_data_t& graph_data, ctx_t& ctx) {
+        constexpr void init_type(ctx_t& ctx) {
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;;
             using data_t = typename detail::io_traits<spec_t>::type;
             using key_t = typename manifest_t::template key_for<spec_t>;
             constexpr std::size_t manifest_index = tuple_index_of_type_impl<key_t, graph_data_t>::value;
 
-            auto& arr = std::get<manifest_index>(graph_data).data;
+            auto& arr = std::get<manifest_index>(mGraphData).data;
 
             constexpr std::size_t in_count = node_manifest::template input_count<spec_t>();
             init_inputs_impl<node_index, spec_t>(ctx, arr, std::make_index_sequence<in_count>{});
@@ -363,13 +377,9 @@ namespace ugraph {
         }
 
         template<std::size_t... Is>
-        constexpr void init_graph_data_impl(
-            graph_data_t& graph_data,
-            std::index_sequence<Is...>
-        ) {
+        constexpr void init_graph_data_impl(std::index_sequence<Is...>) {
             (
                 init_node_types<Is>(
-                    graph_data,
                     std::make_index_sequence<node_type_at<Is>::module_type::Manifest::spec_count>{}
                 ), ...
                 );

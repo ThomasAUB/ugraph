@@ -39,11 +39,6 @@ TEST_CASE("bind_graph_data external") {
 
     );
 
-    using graph_t = decltype(graph);
-    graph_t::graph_data_t data;
-
-    graph.init_graph_data(data);
-
     a = 5;
     b = 0;
 

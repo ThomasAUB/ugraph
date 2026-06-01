@@ -42,9 +42,6 @@ TEST_CASE("graph can contain nested graph nodes and flatten execution") {
         outerNestedNode.output<int>() >> outerSinkNode.input<int>()
     );
 
-    decltype(graph)::graph_data_t graph_data;
-    graph.init_graph_data(graph_data);
-
     int inputValue = 3;
     int outputValue = 0;
 
