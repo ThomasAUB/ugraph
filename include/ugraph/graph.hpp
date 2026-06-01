@@ -90,7 +90,7 @@ namespace ugraph {
         }
 
         template<std::size_t... I>
-        static constexpr auto make_graph_data_t(std::index_sequence<I...>) ->
+        static constexpr auto make_graph_data_storage_t(std::index_sequence<I...>) ->
             std::tuple<
             graph_data_slot<
             typename traits::template key_type_at<I>,
@@ -108,7 +108,52 @@ namespace ugraph {
         using Manifest = manifest_t;
         using vertex_types_list_public = typename topology_t::vertex_types_list_public;
         using edge_types_list_public = typename traits::flattened_edges_t;
-        using graph_data_t = decltype(make_graph_data_t(std::make_index_sequence<traits::key_count>{}));
+
+        class graph_data_t {
+            using storage_t = decltype(make_graph_data_storage_t(std::make_index_sequence<traits::key_count>{}));
+
+            template<typename data_t>
+            using slot_t = std::tuple_element_t<tuple_index_of_type_impl<data_t, storage_t>::value, storage_t>;
+
+            template<typename data_t>
+            using array_t = decltype(std::declval<slot_t<data_t>&>().data);
+
+        public:
+
+            template<typename data_t>
+            static constexpr std::size_t count() {
+                static_assert(tuple_index_of_type_impl<data_t, storage_t>::value != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
+                return std::tuple_size_v<array_t<data_t>>;
+            }
+
+            template<typename data_t>
+            constexpr auto& slots() {
+                constexpr std::size_t index = tuple_index_of_type_impl<data_t, storage_t>::value;
+                static_assert(index != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
+                return std::get<index>(mData).data;
+            }
+
+            template<typename data_t>
+            constexpr const auto& slots() const {
+                constexpr std::size_t index = tuple_index_of_type_impl<data_t, storage_t>::value;
+                static_assert(index != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
+                return std::get<index>(mData).data;
+            }
+
+            template<typename data_t>
+            constexpr auto& slot(std::size_t i) {
+                return slots<data_t>()[i];
+            }
+
+            template<typename data_t>
+            constexpr const auto& slot(std::size_t i) const {
+                return slots<data_t>()[i];
+            }
+
+        private:
+
+            storage_t mData {};
+        };
 
     public:
 
@@ -146,12 +191,6 @@ namespace ugraph {
             template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
-        }
-
-        template<typename data_t>
-        static constexpr std::size_t data_count() {
-            using key_t = typename manifest_t::template key_for<data_t>;
-            return traits::template coloring_t<key_t>::data_count();
         }
 
         constexpr void init(graph_data_t& graphData) {
@@ -255,9 +294,7 @@ namespace ugraph {
             using node_manifest = typename node_type::module_type::Manifest;;
             using data_t = typename detail::io_traits<spec_t>::type;
             using key_t = typename manifest_t::template key_for<spec_t>;
-            constexpr std::size_t manifest_index = tuple_index_of_type_impl<key_t, graph_data_t>::value;
-
-            auto& arr = std::get<manifest_index>(graphData).data;
+            auto& arr = graphData.template slots<key_t>();
 
             constexpr std::size_t in_count = node_manifest::template input_count<spec_t>();
             init_inputs_impl<node_index, spec_t>(ctx, arr, std::make_index_sequence<in_count>{});
@@ -460,14 +497,6 @@ namespace ugraph {
     struct tuple_index_of_type_impl<data_t, tuple_t, I, false> {
         static constexpr std::size_t value = static_cast<std::size_t>(-1);
     };
-
-    template<typename data_t, typename graph_data_t>
-    static constexpr data_t& data_at(graph_data_t& graph_data, std::size_t i) {
-        constexpr std::size_t index = tuple_index_of_type_impl<data_t, graph_data_t>::value;
-        static_assert(index != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
-        auto& arr = std::get<index>(graph_data).data;
-        return arr[i];
-    }
 
     template<typename E0, typename... ERest>
     ExternalDataGraph(E0 const&, ERest const&...) -> ExternalDataGraph<std::decay_t<E0>, std::decay_t<ERest>...>;

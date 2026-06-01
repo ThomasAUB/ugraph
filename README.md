@@ -203,7 +203,11 @@ auto g = ugraph::Graph(
 
 // Graph-owned storage is initialized during construction.
 // Access the owned storage when you need to seed buffer-backed values.
-auto& data = g.graph_data();
+auto& graphData = g.graph_data();
+
+using graph_t = decltype(g);
+static_assert(graph_t::graph_data_t::template count<int>() == 2);
+graphData.template slot<int>(0) = 5;
 ```
 
 ### Shared External Storage
@@ -236,6 +240,14 @@ g1.init(sharedData);
 ```
 
 After `init(sharedData)`, the graph contexts point into the provided storage. `ExternalDataGraph` does not own or retain a separate data instance.
+
+`graph_data_t` exposes typed slot access:
+
+```cpp
+sharedData.template slot<int>(0) = 12;
+auto& allIntSlots = sharedData.template slots<int>();
+static_assert(shared_graph_t::graph_data_t::template count<int>() == 2);
+```
 
 ### Executing the Pipeline
 

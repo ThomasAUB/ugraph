@@ -102,8 +102,8 @@ TEST_CASE("graph data propagation") {
 
     graph.print(std::cout);
 
-    CHECK(graph.data_count<MyData1>() == 2);
-    CHECK(graph.data_count<MyEvent>() == 1);
+    CHECK(graph_t::graph_data_t::template count<MyData1>() == 2);
+    CHECK(graph_t::graph_data_t::template count<MyEvent>() == 1);
     CHECK(m1.last_in == 1);
     CHECK(m1.last_out == 2);
     REQUIRE(sink.inputs.size() == 3);
@@ -211,7 +211,7 @@ TEST_CASE("external data graph reuses external graph data") {
         }
     );
 
-    auto& sharedEvents = ugraph::data_at<MyEvent>(sharedData, 0);
+    auto& sharedEvents = sharedData.template slot<MyEvent>(0);
     REQUIRE(sharedEvents.size() == 2);
     CHECK(sharedEvents[0] == 123);
     CHECK(sharedEvents[1] == 456);

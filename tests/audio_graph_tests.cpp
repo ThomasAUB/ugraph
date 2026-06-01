@@ -202,7 +202,7 @@ private:
 
 TEST_CASE("basic synth voice test") {
 
-    static constexpr auto storage_count = voice_graph_t::data_count<AudioBuffer>();
+    static constexpr auto storage_count = voice_graph_t::graph_data_t::template count<AudioBuffer>();
     static_assert(storage_count == 3);
     static constexpr auto storage_size = 64;
     using buffer_storage_t = std::array<float, storage_size>;
@@ -211,7 +211,7 @@ TEST_CASE("basic synth voice test") {
     Voice voice;
 
     for (int i = 0; i < storage_count; i++) {
-        ugraph::data_at<AudioBuffer>(voice.graph_data(), i) = storage[i];
+        voice.graph_data().template slot<AudioBuffer>(i) = storage[i];
     }
 
     //voice.print();
@@ -243,15 +243,15 @@ TEST_CASE("audio graph simple chain correctness") {
         vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
     );
 
-    static_assert(decltype(g)::template data_count<AudioBuffer>() == 3, "Unexpected buffer count");
+    static_assert(decltype(g)::graph_data_t::template count<AudioBuffer>() == 3, "Unexpected buffer count");
 
-    static constexpr auto storage_count = decltype(g)::data_count<AudioBuffer>();
+    static constexpr auto storage_count = decltype(g)::graph_data_t::template count<AudioBuffer>();
     static constexpr auto storage_size = 64;
     using buffer_storage_t2 = std::array<float, storage_size>;
     std::array<buffer_storage_t2, storage_count> storage;
 
     for (int i = 0; i < storage_count; i++) {
-        ugraph::data_at<AudioBuffer>(g.graph_data(), i) = storage[i];
+        g.graph_data().template slot<AudioBuffer>(i) = storage[i];
     }
 
     g.for_each(
@@ -289,13 +289,13 @@ TEST_CASE("audio graph repeated processing") {
         vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
     );
 
-    static constexpr auto storage_count = decltype(g)::data_count<AudioBuffer>();
+    static constexpr auto storage_count = decltype(g)::graph_data_t::template count<AudioBuffer>();
     static constexpr auto storage_size = 64;
     using buffer_storage_t = std::array<float, storage_size>;
     std::array<buffer_storage_t, storage_count> storage;
 
     for (int i = 0; i < storage_count; i++) {
-        ugraph::data_at<AudioBuffer>(g.graph_data(), i) = storage[i];
+        g.graph_data().template slot<AudioBuffer>(i) = storage[i];
     }
 
     constexpr std::size_t iterations = 2500;
@@ -346,13 +346,13 @@ TEST_CASE("audio graph pipeline vs manual performance ratio") {
     std::array<storage_t, 3> storage;
 
     // Provide storage for the graph internal data buffers
-    static constexpr auto graph_storage_count = decltype(g)::data_count<AudioBuffer>();
+    static constexpr auto graph_storage_count = decltype(g)::graph_data_t::template count<AudioBuffer>();
     CHECK(graph_storage_count == 3);
 
     using graph_buffer_storage_t = std::array<float, kBlockSize>;
     std::array<graph_buffer_storage_t, graph_storage_count> gstorage;
     for (std::size_t i = 0; i < graph_storage_count; ++i) {
-        ugraph::data_at<AudioBuffer>(g.graph_data(), i) = gstorage[i];
+        g.graph_data().template slot<AudioBuffer>(i) = gstorage[i];
     }
 
     // Warm-up both paths (also protects against extremely small timings)
