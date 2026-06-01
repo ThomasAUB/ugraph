@@ -37,27 +37,21 @@ TEST_CASE("graph can contain nested graph nodes and flatten execution") {
     auto outerNestedNode = ugraph::make_node<111>(innerGraph);
     auto outerSinkNode = ugraph::make_node<112>(outerSink);
 
-    auto graph = ugraph::Graph(
-        outerSourceNode.output<int>() >> outerNestedNode.input<int>(),
-        outerNestedNode.output<int>() >> outerSinkNode.input<int>()
-    );
-
-    decltype(graph)::graph_data_t graph_data;
-    graph.init_graph_data(graph_data);
-
     int inputValue = 3;
     int outputValue = 0;
 
-    graph.bind_input<110>(inputValue);
-    graph.bind_output<112>(outputValue);
-
-    CHECK(graph.all_ios_connected());
+    auto graph = ugraph::Graph(
+        inputValue | outerSourceNode.input<int>(),
+        outerSourceNode.output<int>() >> outerNestedNode.input<int>(),
+        outerNestedNode.output<int>() >> outerSinkNode.input<int>(),
+        outerSinkNode.output<int>() | outputValue
+    );
 
     std::vector<AddStage*> orderedModules;
     graph.for_each([&] (auto& module, auto& ctx) {
         module.process(ctx);
         orderedModules.push_back(&module);
-    });
+        });
 
     CHECK(outputValue == 7);
     REQUIRE(orderedModules.size() == 4);

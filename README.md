@@ -195,11 +195,9 @@ auto g = ugraph::Graph(
     nMerger.output<int>() >> nSnk.input<int>()
 );
 
-// Instantiate runtime storage for node IO and minimal buffer slots
-decltype(g)::graph_data_t data;
-
-// Initialize internal pointers/slots for the graph
-g.init_graph_data(data);
+// Graph-owned storage is initialized during construction.
+// Access the owned storage when you need to seed buffer-backed values.
+auto& data = g.graph_data();
 ```
 
 ### Executing the Pipeline
@@ -263,23 +261,32 @@ using Manifest = ugraph::Manifest< ugraph::IO<MyType, 1, 0> >; // strict by defa
 using Optional = ugraph::Manifest< ugraph::IO<MyType, 1, 0, false> >; // opt-out
 ```
 
-When `strict` is `true` the `Graph` will `static_assert` during construction if required inputs or outputs for that type are not connected. Use `false` to allow optional/unconnected ports.
+Every `ugraph::Graph` construction performs a compile-time wiring check. Required inputs and outputs must be satisfied through graph edges or constructor-time data bindings, otherwise graph construction fails with a `static_assert`.
+
+The `strict` flag controls which ports participate in that check:
+
+- `strict == true`: the spec must be wired according to the graph rules.
+- `strict == false`: the spec is treated as optional and does not make the graph fail the compile-time completeness check.
+
+`Graph::is_fully_wired()` follows the same rules, so its result matches the constructor's compile-time validation logic.
 
 This compile-time enforcement helps catch wiring mistakes early in pipelines.
 
 
-#### Manual binding (unconnected IO)
+#### Construction-time external IO binding
 
-If a node's ports are not connected through the `Graph` you can still provide inputs or capture outputs manually.
-
-- Bind a graph port to local storage using `graph.bind_input(...)` and `graph.bind_output(...)` (useful when wiring external buffers to node inputs/outputs):
+If a node needs external inputs or outputs, bind them as part of the graph definition.
 
 ```cpp
-// bind an external variable to a node input or output
+// bind external storage directly in the graph definition
 int inData = 0;
 float outData = 0;
-graph.bind_input<entryNode.id()>(inData);
-graph.bind_output<outputNode.id()>(outData);
+
+auto graph = ugraph::Graph(
+    inData | entryNode.input<int>(),
+    entryNode.output<int>() >> outputNode.input<int>(),
+    outputNode.output<float>() | outData
+);
 ```
 
 - Or run a single module manually by constructing a `Context` and calling `set_ios` to point its input/output storage:

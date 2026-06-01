@@ -74,35 +74,25 @@ TEST_CASE("graph data propagation") {
     Source src;
     Module1 m1;
     Sink sink;
+    MyData1 md0 = 0;
+    MyData1 md_in = 78;
+    MyData1 md1 = 0;
 
     auto srcNode = ugraph::make_node<100>(src);
     auto m1Node = ugraph::make_node<101>(m1);
     auto sinkNode = ugraph::make_node<102>(sink);
 
     ugraph::Graph graph(
+        md0 | srcNode.input<MyData1>(),
         srcNode.output<MyData1>() >> m1Node.input<MyData1>(),
         m1Node.output<MyData1>() >> sinkNode.input<MyData1, 0>(),
         srcNode.output<MyData1>() >> sinkNode.input<MyData1, 1>(),
-        srcNode.output<MyEvent>() >> sinkNode.input<MyEvent, 0>()
+        md_in | sinkNode.input<MyData1, 2>(),
+        srcNode.output<MyEvent>() >> sinkNode.input<MyEvent, 0>(),
+        sinkNode.output<MyData1>() | md1
     );
 
     using graph_t = decltype(graph);
-
-    static_assert(!graph_t::is_fully_wired(), "Graph should have missing connections");
-
-    graph_t::graph_data_t graph_data;
-    graph.init_graph_data(graph_data);
-
-    MyData1 md0 = 0;
-    graph.bind_input<100>(md0);
-
-    MyData1 md_in = 78;
-    graph.bind_input_at<102, 2>(md_in);
-
-    MyData1 md1 = 0;
-    graph.bind_output<102>(md1);
-
-    CHECK(graph.all_ios_connected());
 
     graph.for_each(
         [] (auto& n, auto& ctx) {
@@ -143,11 +133,6 @@ TEST_CASE("graph print output") {
     );
 
     using graph_t = decltype(graph);
-
-    static_assert(graph_t::is_fully_wired(), "Graph is missing connections");
-
-    graph_t::graph_data_t dg;
-    graph.init_graph_data(dg);
 
     std::ostringstream oss;
     graph.print(oss);
