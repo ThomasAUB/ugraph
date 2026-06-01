@@ -120,6 +120,7 @@ namespace ugraph {
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
             (process_binding_fn(es, this), ...);
             init_graph_data();
+            static_assert(is_fully_wired(), "The graph is missing connections");
         }
 
         static constexpr auto ids() { return topology_t::ids(); }
@@ -146,7 +147,7 @@ namespace ugraph {
             return std::get<node_index>(mModules);
         }
 
-            template<typename F>
+        template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
         }
@@ -161,80 +162,9 @@ namespace ugraph {
             return mGraphData;
         }
 
-        constexpr const graph_data_t& graph_data() const {
-            return mGraphData;
-        }
-
-        template<std::size_t node_id, typename data_t>
-        constexpr void bind_output(data_t& data) {
-            constexpr std::size_t node_index = [] () constexpr {
-                constexpr auto ids = topology_t::ids();
-                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
-                return static_cast<std::size_t>(-1);
-                }();
-            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
-            using node_type = node_type_at<node_index>;
-            using node_manifest = typename node_type::module_type::Manifest;
-            static_assert(node_manifest::template contains<data_t>, "Type not declared in node Manifest");
-            constexpr std::size_t out_count = node_manifest::template output_count<data_t>();
-            static_assert(
-                out_count > 0,
-                "No output ports for this type"
-                );
-            static_assert(
-                out_count == 1,
-                "Bind_output is only valid for single-output types; use bind_output_at for multi-output types"
-                );
-            bind_output_key_at<node_id, 0, data_t>(data);
-        }
-
-        template<std::size_t node_id, std::size_t output_index, typename data_t>
-        constexpr void bind_output_at(data_t& data) {
-
-            bind_output_key_at<node_id, output_index, data_t>(data);
-        }
-
-        template<std::size_t node_id, typename data_t>
-        constexpr void bind_input(data_t& data) {
-            constexpr std::size_t node_index = [] () constexpr {
-                constexpr auto ids = topology_t::ids();
-                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
-                return static_cast<std::size_t>(-1);
-                }();
-            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
-            using node_type = node_type_at<node_index>;
-            using node_manifest = typename node_type::module_type::Manifest;
-            static_assert(node_manifest::template contains<data_t>, "Type not declared in node Manifest");
-            constexpr std::size_t in_count = node_manifest::template input_count<data_t>();
-            static_assert(
-                in_count > 0,
-                "No input ports for this type"
-                );
-            static_assert(
-                in_count == 1,
-                "Bind_input is only valid for single-input types; use bind_input_at for multi-input types"
-                );
-            bind_input_key_at<node_id, 0, data_t>(data);
-        }
-
-        template<std::size_t node_id, std::size_t input_index, typename data_t>
-        constexpr void bind_input_at(data_t& data) {
-
-            bind_input_key_at<node_id, input_index, data_t>(data);
-        }
-
-        constexpr bool all_ios_connected() const {
-            return std::apply([] (auto& ... ctxs) { return (ctxs.all_ios_connected() && ...); }, mContexts);
-        }
-
         template<typename stream_t>
         void print(stream_t& stream, const std::string_view& inGraphName = "") const {
             ugraph::print_graph<topology_t>(stream, inGraphName);
-        }
-
-        template<typename stream_t>
-        void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "") const {
-            ugraph::print_pipeline<topology_t>(stream, inGraphName);
         }
 
         static constexpr bool is_fully_wired() {
@@ -388,15 +318,24 @@ namespace ugraph {
         template<typename T>
         struct is_input_binding : std::false_type {};
 
+        template<typename data_t, typename in_port_t>
+        struct is_input_binding<InDataBind<data_t, in_port_t>> : std::true_type {};
+
+        template<typename T>
+        struct is_output_binding : std::false_type {};
+
+        template<typename data_t, typename out_port_t>
+        struct is_output_binding<OutDataBind<data_t, out_port_t>> : std::true_type {};
+
         template<typename spec_t, std::size_t node_id, std::size_t input_index, typename link_t, bool IsInputBinding = is_input_binding<link_t>::value>
         struct input_binding_matches : std::false_type {};
 
         template<typename spec_t, std::size_t node_id, std::size_t input_index, typename link_t>
         struct input_binding_matches<spec_t, node_id, input_index, link_t, true>
             : std::bool_constant<
-            std::is_same_v<spec_t, typename link_t::spec_type> &&
-            (link_t::node_type::id() == node_id) &&
-            (link_t::port_type::index() == input_index)
+            std::is_same_v<spec_t, typename binding_traits<link_t>::port_type::spec_type> &&
+            (binding_traits<link_t>::port_type::node_type::id() == node_id) &&
+            (binding_traits<link_t>::port_type::index() == input_index)
             > {};
 
         template<typename spec_t, std::size_t node_id, std::size_t input_index>
@@ -404,17 +343,73 @@ namespace ugraph {
             return (false || ... || input_binding_matches<spec_t, node_id, input_index, edges_t>::value);
         }
 
+        template<typename spec_t, std::size_t node_id, std::size_t output_index, typename link_t, bool IsOutputBinding = is_output_binding<link_t>::value>
+        struct output_binding_matches : std::false_type {};
+
+        template<typename spec_t, std::size_t node_id, std::size_t output_index, typename link_t>
+        struct output_binding_matches<spec_t, node_id, output_index, link_t, true>
+            : std::bool_constant<
+            std::is_same_v<spec_t, typename binding_traits<link_t>::port_type::spec_type> &&
+            (binding_traits<link_t>::port_type::node_type::id() == node_id) &&
+            (binding_traits<link_t>::port_type::index() == output_index)
+            > {};
+
+        template<typename spec_t, std::size_t node_id, std::size_t output_index>
+        static constexpr bool has_output_binding() {
+            return (false || ... || output_binding_matches<spec_t, node_id, output_index, edges_t>::value);
+        }
+
+        template<std::size_t node_index>
+        static constexpr bool is_entry_node() {
+            constexpr std::size_t node_id = topology_t::template id_at<node_index>();
+            constexpr auto graph_edges = topology_t::edges();
+            for (const auto& edge : graph_edges) {
+                if (edge.second == node_id) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        template<std::size_t node_index>
+        static constexpr bool is_exit_node() {
+            constexpr std::size_t node_id = topology_t::template id_at<node_index>();
+            constexpr auto graph_edges = topology_t::edges();
+            for (const auto& edge : graph_edges) {
+                if (edge.first == node_id) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         template<std::size_t node_index, typename spec_t, std::size_t... input_indices>
-        static constexpr bool spec_dependencies_wired_impl(std::index_sequence<input_indices...>) {
+        static constexpr bool spec_inputs_wired_impl(std::index_sequence<input_indices...>) {
             constexpr std::size_t node_id = topology_t::template id_at<node_index>();
             using key_t = typename manifest_t::template key_for<spec_t>;
             return (((traits::template input_index_for<key_t, node_index, input_indices>() != traits::invalid_index) ||
-                has_input_binding<spec_t, node_id, input_indices>()) && ...);
+                has_input_binding<spec_t, node_id, input_indices>() ||
+                is_entry_node<node_index>()) && ...);
+        }
+
+        template<std::size_t node_index, typename spec_t, std::size_t... output_indices>
+        static constexpr bool spec_outputs_wired_impl(std::index_sequence<output_indices...>) {
+            constexpr std::size_t node_id = topology_t::template id_at<node_index>();
+            using key_t = typename manifest_t::template key_for<spec_t>;
+            return (((traits::template output_index_for<key_t, node_index, output_indices>() != traits::invalid_index) ||
+                has_output_binding<spec_t, node_id, output_indices>() ||
+                is_exit_node<node_index>()) && ...);
         }
 
         template<std::size_t node_index, typename spec_t>
         static constexpr bool spec_dependencies_wired() {
-            return spec_dependencies_wired_impl<node_index, spec_t>(std::make_index_sequence<spec_t::input_count>{});
+            if constexpr (!detail::io_traits<spec_t>::strict_connection) {
+                return true;
+            }
+            else {
+                return spec_inputs_wired_impl<node_index, spec_t>(std::make_index_sequence<spec_t::input_count>{}) &&
+                    spec_outputs_wired_impl<node_index, spec_t>(std::make_index_sequence<spec_t::output_count>{});
+            }
         }
 
         template<std::size_t node_index, std::size_t... spec_indices>
@@ -457,5 +452,11 @@ namespace ugraph {
 
     template<typename E0, typename... ERest>
     Graph(E0 const&, ERest const&...) -> Graph<std::decay_t<E0>, std::decay_t<ERest>...>;
+
+    template<std::size_t node_id, typename... edges_t>
+    constexpr auto nested_module_ptr(Graph<edges_t...>& graph)
+        -> typename Graph<edges_t...>::topology_type::template find_type_by_id<node_id>::type::module_type* {
+        return graph.template module_ptr_by_id<node_id>();
+    }
 
 } // namespace ugraph

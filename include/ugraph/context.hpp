@@ -154,18 +154,6 @@ namespace ugraph {
             data[input_count<key_t>() + I] = ptr;
         }
 
-        constexpr bool all_ios_connected() const {
-            return std::apply([] (auto const&... arrays) {
-                return (true && ... && ([&] (auto const& arr) {
-                    for (auto ptr : arr.ptrs) {
-                        if (ptr == nullptr) return false;
-                    }
-                    return true;
-                    })(arrays));
-                }, mDataPtrsTuple
-            );
-        }
-
     private:
 
         template<typename key_t>

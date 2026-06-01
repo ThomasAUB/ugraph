@@ -261,23 +261,25 @@ using Manifest = ugraph::Manifest< ugraph::IO<MyType, 1, 0> >; // strict by defa
 using Optional = ugraph::Manifest< ugraph::IO<MyType, 1, 0, false> >; // opt-out
 ```
 
-When `strict` is `true` the `Graph` will `static_assert` during construction if required inputs or outputs for that type are not connected. Use `false` to allow optional/unconnected ports.
+When `strict` is `true`, `Graph::is_fully_wired()` reports whether required inputs and outputs are connected through graph edges or constructor-time data bindings. Use `false` to allow optional/unconnected ports.
 
 This compile-time enforcement helps catch wiring mistakes early in pipelines.
 
 
-#### Manual binding (unconnected IO)
+#### Construction-time external IO binding
 
-If a node's ports are not connected through the `Graph` you can still provide inputs or capture outputs manually.
-
-- Bind a graph port to local storage using `graph.bind_input(...)` and `graph.bind_output(...)` (useful when wiring external buffers to node inputs/outputs):
+If a node needs external inputs or outputs, bind them as part of the graph definition.
 
 ```cpp
-// bind an external variable to a node input or output
+// bind external storage directly in the graph definition
 int inData = 0;
 float outData = 0;
-graph.bind_input<entryNode.id()>(inData);
-graph.bind_output<outputNode.id()>(outData);
+
+auto graph = ugraph::Graph(
+    inData | entryNode.input<int>(),
+    entryNode.output<int>() >> outputNode.input<int>(),
+    outputNode.output<float>() | outData
+);
 ```
 
 - Or run a single module manually by constructing a `Context` and calling `set_ios` to point its input/output storage:

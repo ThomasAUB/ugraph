@@ -19,7 +19,7 @@ struct Add {
 
 };
 
-TEST_CASE("manual bind graph") {
+TEST_CASE("constructor-bound graph") {
 
     Add addEntry;
     Add addMiddle;
@@ -32,29 +32,18 @@ TEST_CASE("manual bind graph") {
     auto outputNode2 = ugraph::make_node<103>(addOut2);
 
 
-    ugraph::Graph graph(
-        entryNode.output<input_data_t>() >> middleNode.input<input_data_t>(),
-        middleNode.output<input_data_t>() >> outputNode1.input<input_data_t>(),
-        entryNode.output<input_data_t>() >> outputNode2.input<input_data_t>()
-    );
-
-    CHECK(!graph.all_ios_connected());
-
     input_data_t entry = 0;
     input_data_t output1 = 0;
     input_data_t output2 = 0;
 
-    graph.bind_input<100>(entry);
-
-    CHECK(!graph.all_ios_connected());
-
-    graph.bind_output<102>(output1);
-
-    CHECK(!graph.all_ios_connected());
-
-    graph.bind_output<103>(output2);
-
-    CHECK(graph.all_ios_connected());
+    ugraph::Graph graph(
+        entry | entryNode.input<input_data_t>(),
+        entryNode.output<input_data_t>() >> middleNode.input<input_data_t>(),
+        middleNode.output<input_data_t>() >> outputNode1.input<input_data_t>(),
+        entryNode.output<input_data_t>() >> outputNode2.input<input_data_t>(),
+        outputNode1.output<input_data_t>() | output1,
+        outputNode2.output<input_data_t>() | output2
+    );
 
     graph.for_each(
         [] (auto& n, auto& ctx) {

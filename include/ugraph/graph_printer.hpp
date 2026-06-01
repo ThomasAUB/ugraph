@@ -237,7 +237,6 @@ namespace ugraph {
     void print_pipeline(stream_t& stream, const std::string_view& inGraphName) {
         using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
 
-        constexpr auto edges_ids = topo_t::edges();
         constexpr auto ids = topo_t::ids();
         print_header(stream, inGraphName);
 
@@ -253,5 +252,6 @@ namespace ugraph {
         stream << "\n";
         print_footer(stream, inGraphName);
     }
+
 
 } // namespace ugraph
