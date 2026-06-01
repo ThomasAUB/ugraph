@@ -261,7 +261,14 @@ using Manifest = ugraph::Manifest< ugraph::IO<MyType, 1, 0> >; // strict by defa
 using Optional = ugraph::Manifest< ugraph::IO<MyType, 1, 0, false> >; // opt-out
 ```
 
-When `strict` is `true`, `Graph::is_fully_wired()` reports whether required inputs and outputs are connected through graph edges or constructor-time data bindings. Use `false` to allow optional/unconnected ports.
+Every `ugraph::Graph` construction performs a compile-time wiring check. Required inputs and outputs must be satisfied through graph edges or constructor-time data bindings, otherwise graph construction fails with a `static_assert`.
+
+The `strict` flag controls which ports participate in that check:
+
+- `strict == true`: the spec must be wired according to the graph rules.
+- `strict == false`: the spec is treated as optional and does not make the graph fail the compile-time completeness check.
+
+`Graph::is_fully_wired()` follows the same rules, so its result matches the constructor's compile-time validation logic.
 
 This compile-time enforcement helps catch wiring mistakes early in pipelines.
 

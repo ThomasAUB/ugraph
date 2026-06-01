@@ -94,8 +94,6 @@ TEST_CASE("graph data propagation") {
 
     using graph_t = decltype(graph);
 
-    static_assert(graph_t::is_fully_wired(), "Graph should be fully wired");
-
     graph.for_each(
         [] (auto& n, auto& ctx) {
             n.process(ctx);
@@ -135,8 +133,6 @@ TEST_CASE("graph print output") {
     );
 
     using graph_t = decltype(graph);
-
-    static_assert(graph_t::is_fully_wired(), "Graph is missing connections");
 
     std::ostringstream oss;
     graph.print(oss);

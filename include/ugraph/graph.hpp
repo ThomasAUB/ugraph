@@ -120,15 +120,16 @@ namespace ugraph {
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
             (process_binding_fn(es, this), ...);
             init_graph_data();
-            static_assert(is_fully_wired(), "The graph is missing connections");
+
+            static_assert(
+                is_fully_wired_impl(std::make_index_sequence<topology_t::size()>{}),
+                "The graph is missing connections"
+                );
         }
 
         static constexpr auto ids() { return topology_t::ids(); }
         static constexpr std::size_t size() { return topology_t::size(); }
         static constexpr auto edges() { return topology_t::edges(); }
-
-        template<std::size_t node_id>
-        static constexpr bool contains_node_id() { return topology_t::template has_id<node_id>(); }
 
         template<std::size_t node_id>
         constexpr auto module_ptr_by_id()
@@ -147,7 +148,7 @@ namespace ugraph {
             return std::get<node_index>(mModules);
         }
 
-        template<typename F>
+            template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
         }
@@ -167,11 +168,10 @@ namespace ugraph {
             ugraph::print_graph<topology_t>(stream, inGraphName);
         }
 
-        static constexpr bool is_fully_wired() {
-            return is_fully_wired_impl(std::make_index_sequence<topology_t::size()>{});
-        }
-
     private:
+
+        template<std::size_t node_id>
+        static constexpr bool contains_node_id() { return topology_t::template has_id<node_id>(); }
 
         template<std::size_t node_id, std::size_t output_index, typename key_t, typename data_t>
         constexpr void bind_output_key_at(data_t& data) {
