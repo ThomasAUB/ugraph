@@ -237,6 +237,40 @@ namespace ugraph {
             return index_of<Id>() != invalid_index;
         }
 
+        template<std::size_t Id>
+        static constexpr bool is_entry_id() {
+            static_assert(has_id<Id>(), "Vertex id not found");
+            for (const auto& edge : edges_ids) {
+                if (edge.second == Id) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        template<std::size_t Id>
+        static constexpr bool is_exit_id() {
+            static_assert(has_id<Id>(), "Vertex id not found");
+            for (const auto& edge : edges_ids) {
+                if (edge.first == Id) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        template<std::size_t I>
+        static constexpr bool is_entry() {
+            static_assert(I < vertex_count, "Topology::is_entry index out of range");
+            return is_entry_id<id_at<I>()>();
+        }
+
+        template<std::size_t I>
+        static constexpr bool is_exit() {
+            static_assert(I < vertex_count, "Topology::is_exit index out of range");
+            return is_exit_id<id_at<I>()>();
+        }
+
         // Query vertex type by id at compile-time: Topology::find_type_by_id<VID>::type
         template<std::size_t Id>
         struct find_type_by_id {

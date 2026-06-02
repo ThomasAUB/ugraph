@@ -355,37 +355,13 @@ namespace ugraph {
             return (false || ... || output_binding_matches<spec_t, node_id, output_index, edges_t>::value);
         }
 
-        template<std::size_t node_index>
-        static constexpr bool is_entry_node() {
-            constexpr std::size_t node_id = topology_t::template id_at<node_index>();
-            constexpr auto graph_edges = topology_t::edges();
-            for (const auto& edge : graph_edges) {
-                if (edge.second == node_id) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        template<std::size_t node_index>
-        static constexpr bool is_exit_node() {
-            constexpr std::size_t node_id = topology_t::template id_at<node_index>();
-            constexpr auto graph_edges = topology_t::edges();
-            for (const auto& edge : graph_edges) {
-                if (edge.first == node_id) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
         template<std::size_t node_index, typename spec_t, std::size_t... input_indices>
         static constexpr bool spec_inputs_wired_impl(std::index_sequence<input_indices...>) {
             constexpr std::size_t node_id = topology_t::template id_at<node_index>();
             using key_t = typename manifest_t::template key_for<spec_t>;
             return (((traits::template input_index_for<key_t, node_index, input_indices>() != traits::invalid_index) ||
                 has_input_binding<spec_t, node_id, input_indices>() ||
-                is_entry_node<node_index>()) && ...);
+                topology_t::template is_entry<node_index>()) && ...);
         }
 
         template<std::size_t node_index, typename spec_t, std::size_t... output_indices>
@@ -394,7 +370,7 @@ namespace ugraph {
             using key_t = typename manifest_t::template key_for<spec_t>;
             return (((traits::template output_index_for<key_t, node_index, output_indices>() != traits::invalid_index) ||
                 has_output_binding<spec_t, node_id, output_indices>() ||
-                is_exit_node<node_index>()) && ...);
+                topology_t::template is_exit<node_index>()) && ...);
         }
 
         template<std::size_t node_index, typename spec_t>
