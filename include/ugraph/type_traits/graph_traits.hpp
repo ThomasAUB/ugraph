@@ -152,7 +152,10 @@ namespace ugraph::detail {
         using topology_t = typename type_list_to_topology<edge_types_list>::type;
 
         template<std::size_t I>
-        using node_type_at = typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type;
+        using node_type_at = typename topology_t::template type_at<I>;
+
+        template<std::size_t Id>
+        using module_ptr_for_id_t = typename topology_t::template find_type_by_id<Id>::type::module_type*;
 
         using graph_types_list = typename collect_specs_from_typelist<typename topology_t::vertex_types_list>::type;
         using graph_keys_list = typename specs_to_keys<graph_types_list>::type;
@@ -166,49 +169,35 @@ namespace ugraph::detail {
 
         template<std::size_t... I>
         static constexpr auto make_modules_tuple_t(std::index_sequence<I...>) ->
-            std::tuple<typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type::module_type*...>;
+            std::tuple<typename topology_t::template type_at<I>::module_type*...>;
 
         using modules_tuple_t = decltype(make_modules_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
-        template<std::size_t id, typename Edge, bool IsData = detail::is_data_binding<Edge>::value>
-        struct try_edge_module_impl;
-
-        template<std::size_t id, typename Edge>
-        struct try_edge_module_impl<id, Edge, true> {
-            static constexpr auto run(const Edge&) {
-                return (typename topology_t::template find_type_by_id<id>::type::module_type*)nullptr;
+        template<std::size_t Id, typename Edge>
+        static constexpr auto try_edge_module(const Edge& e) {
+            if constexpr (detail::is_data_binding<Edge>::value) {
+                return static_cast<module_ptr_for_id_t<Id>>(nullptr);
             }
-        };
-
-        template<std::size_t id, typename Edge>
-        struct try_edge_module_impl<id, Edge, false> {
-            static constexpr auto run(const Edge& e) {
+            else {
                 using S = typename detail::edge_traits<Edge>::src_vertex_t;
                 using D = typename detail::edge_traits<Edge>::dst_vertex_t;
 
-                if constexpr (S::id() == id) {
+                if constexpr (S::id() == Id) {
                     return &e.first.module();
                 }
+                else if constexpr (D::id() == Id) {
+                    return &e.second.module();
+                }
                 else {
-                    if constexpr (D::id() == id) {
-                        return &e.second.module();
-                    }
-                    else {
-                        return (typename topology_t::template find_type_by_id<id>::type::module_type*)nullptr;
-                    }
+                    return static_cast<module_ptr_for_id_t<Id>>(nullptr);
                 }
             }
-        };
-
-        template<std::size_t id, typename Edge>
-        static constexpr auto try_edge_module(const Edge& e) {
-            return try_edge_module_impl<id, Edge>::run(e);
         }
 
-        template<std::size_t id>
+        template<std::size_t Id>
         static constexpr auto get_module_ptr(const edges_t&... es) {
-            typename topology_t::template find_type_by_id<id>::type::module_type* r = nullptr;
-            ((r = r ? r : try_edge_module<id>(es)), ...);
+            module_ptr_for_id_t<Id> r = nullptr;
+            ((r = r ? r : try_edge_module<Id>(es)), ...);
             return r;
         }
 

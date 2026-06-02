@@ -115,6 +115,7 @@ namespace ugraph {
 
     public:
         using vertex_types_list = vertex_list_t;
+        static constexpr std::size_t invalid_index = static_cast<std::size_t>(-1);
 
         // Kahn topological sort executed at compile time.
         struct topo_result {
@@ -222,13 +223,18 @@ namespace ugraph {
         }
 
         template<std::size_t Id>
-        static constexpr bool has_id() {
+        static constexpr std::size_t index_of() {
             for (std::size_t i = 0; i < vertex_count; ++i) {
                 if (topo.order[i] == Id) {
-                    return true;
+                    return i;
                 }
             }
-            return false;
+            return invalid_index;
+        }
+
+        template<std::size_t Id>
+        static constexpr bool has_id() {
+            return index_of<Id>() != invalid_index;
         }
 
         // Query vertex type by id at compile-time: Topology::find_type_by_id<VID>::type
@@ -239,6 +245,9 @@ namespace ugraph {
             using type = decltype(helper(std::make_index_sequence<vertex_count>{}));
             static_assert(!std::is_void_v<type>, "Vertex id not found");
         };
+
+        template<std::size_t I>
+        using type_at = typename find_type_by_id<id_at<I>()>::type;
 
         // for_each: Visit each vertex type in topological order. The callable receives a distinct
         // default-constructed tag object instance for each vertex type.

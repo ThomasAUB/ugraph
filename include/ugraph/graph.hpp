@@ -171,23 +171,6 @@ namespace ugraph {
         static constexpr std::size_t size() { return topology_t::size(); }
         static constexpr auto edges() { return topology_t::edges(); }
 
-        template<std::size_t node_id>
-        constexpr auto module_ptr_by_id()
-            -> typename topology_t::template find_type_by_id<node_id>::type::module_type* {
-            static_assert(topology_t::template has_id<node_id>(), "Invalid node id");
-            constexpr std::size_t node_index = [] () constexpr {
-                constexpr auto ids = topology_t::ids();
-                for (std::size_t i = 0; i < topology_t::size(); ++i) {
-                    if (ids[i] == node_id) {
-                        return i;
-                    }
-                }
-                return static_cast<std::size_t>(-1);
-                }();
-            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
-            return std::get<node_index>(mModules);
-        }
-
             template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
@@ -206,13 +189,8 @@ namespace ugraph {
 
         template<std::size_t node_id, std::size_t output_index, typename key_t, typename data_t>
         constexpr void bind_output_key_at(data_t& data) {
-
-            constexpr std::size_t node_index = [] () constexpr {
-                constexpr auto ids = topology_t::ids();
-                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
-                return static_cast<std::size_t>(-1);
-                }();
-            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            constexpr std::size_t node_index = topology_t::template index_of<node_id>();
+            static_assert(node_index != topology_t::invalid_index, "Invalid node id");
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             using spec_t = typename node_manifest::template spec_for<key_t>;
@@ -239,12 +217,8 @@ namespace ugraph {
 
         template<std::size_t node_id, std::size_t input_index, typename key_t, typename data_t>
         constexpr void bind_input_key_at(data_t& data) {
-            constexpr std::size_t node_index = [] () constexpr {
-                constexpr auto ids = topology_t::ids();
-                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
-                return static_cast<std::size_t>(-1);
-                }();
-            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            constexpr std::size_t node_index = topology_t::template index_of<node_id>();
+            static_assert(node_index != topology_t::invalid_index, "Invalid node id");
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             using spec_t = typename node_manifest::template spec_for<key_t>;
