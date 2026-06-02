@@ -148,14 +148,13 @@ namespace ugraph::detail {
         template<typename... Es>
         struct type_list_to_topology<detail::type_list<Es...>> { using type = Topology<Es...>; };
 
-        using filtered_edge_list_t = typename filter_out_data_bindings<detail::type_list<edges_t...>>::type;
-        using topology_t = typename type_list_to_topology<filtered_edge_list_t>::type;
-        using flattened_edges_t = filtered_edge_list_t;
+        using edge_types_list = typename filter_out_data_bindings<detail::type_list<edges_t...>>::type;
+        using topology_t = typename type_list_to_topology<edge_types_list>::type;
 
         template<std::size_t I>
         using node_type_at = typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type;
 
-        using graph_types_list = typename collect_specs_from_typelist<typename topology_t::vertex_types_list_public>::type;
+        using graph_types_list = typename collect_specs_from_typelist<typename topology_t::vertex_types_list>::type;
         using graph_keys_list = typename specs_to_keys<graph_types_list>::type;
         using manifest_t = typename manifest_from_list<graph_types_list>::type;
         static constexpr std::size_t invalid_index = static_cast<std::size_t>(-1);
@@ -219,7 +218,7 @@ namespace ugraph::detail {
         }
 
         template<typename T>
-        using edge_list_for_t = typename detail::filter_edges<T, flattened_edges_t>::type;
+        using edge_list_for_t = typename detail::filter_edges<T, edge_types_list>::type;
 
         template<typename T>
         using coloring_t = typename detail::coloring_or_empty<topology_t, edge_list_for_t<T>>::type;
@@ -240,7 +239,7 @@ namespace ugraph::detail {
 
         template<typename T, std::size_t VID, std::size_t PORT>
         static constexpr bool has_input_edge() {
-            return has_input_edge_impl<T, VID, PORT, flattened_edges_t>::value;
+            return has_input_edge_impl<T, VID, PORT, edge_types_list>::value;
         }
 
         template<typename T, std::size_t VID, std::size_t PORT, typename EdgeList>
@@ -259,7 +258,7 @@ namespace ugraph::detail {
 
         template<typename T, std::size_t VID, std::size_t PORT>
         static constexpr bool has_output_edge() {
-            return has_output_edge_impl<T, VID, PORT, flattened_edges_t>::value;
+            return has_output_edge_impl<T, VID, PORT, edge_types_list>::value;
         }
 
         template<typename T, std::size_t NodeIndex, std::size_t PortIndex>

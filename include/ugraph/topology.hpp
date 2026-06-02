@@ -67,14 +67,14 @@ namespace ugraph {
         template<typename List> struct fold_edges<List> { using type = List; };
         template<typename List, typename E, typename... R>
         struct fold_edges<List, E, R...> { using type = typename fold_edges<typename list_add_edge_vertices<List, E>::type, R...>::type; };
-        using vertex_types_list = typename fold_edges<detail::type_list<>, edges_t...>::type;
+        using vertex_list_t = typename fold_edges<detail::type_list<>, edges_t...>::type;
 
-        static constexpr std::size_t vertex_count = detail::type_list_size<vertex_types_list>::value;
+        static constexpr std::size_t vertex_count = detail::type_list_size<vertex_list_t>::value;
 
         // Collect vertex ids in declared topological order (before sorting)
         template<std::size_t... I>
         static constexpr auto make_vertex_ids(std::index_sequence<I...>) {
-            return std::array<std::size_t, sizeof...(I)>{ detail::type_list_at<I, vertex_types_list>::type::id()... };
+            return std::array<std::size_t, sizeof...(I)>{ detail::type_list_at<I, vertex_list_t>::type::id()... };
         }
         static constexpr auto vertex_ids = make_vertex_ids(std::make_index_sequence<vertex_count>{});
 
@@ -93,7 +93,7 @@ namespace ugraph {
 
         template<std::size_t... I>
         static constexpr auto make_vertex_priorities(std::index_sequence<I...>) {
-            return std::array<std::size_t, sizeof...(I)>{ detail::type_list_at<I, vertex_types_list>::type::priority()... };
+            return std::array<std::size_t, sizeof...(I)>{ detail::type_list_at<I, vertex_list_t>::type::priority()... };
         }
         static constexpr auto vertex_priorities = make_vertex_priorities(std::make_index_sequence<vertex_count>{});
 
@@ -114,7 +114,7 @@ namespace ugraph {
         static constexpr auto edges_ids = make_edges_ids();
 
     public:
-        using vertex_types_list_public = vertex_types_list;
+        using vertex_types_list = vertex_list_t;
 
         // Kahn topological sort executed at compile time.
         struct topo_result {
@@ -235,7 +235,7 @@ namespace ugraph {
         template<std::size_t Id>
         struct find_type_by_id {
             template<std::size_t... I>
-            static auto helper(std::index_sequence<I...>) -> typename find_impl<Id, typename detail::type_list_at<I, vertex_types_list>::type...>::type;
+            static auto helper(std::index_sequence<I...>) -> typename find_impl<Id, typename detail::type_list_at<I, vertex_list_t>::type...>::type;
             using type = decltype(helper(std::make_index_sequence<vertex_count>{}));
             static_assert(!std::is_void_v<type>, "Vertex id not found");
         };

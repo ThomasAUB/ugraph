@@ -106,8 +106,8 @@ namespace ugraph {
 
         using topology_type = topology_t;
         using Manifest = manifest_t;
-        using vertex_types_list_public = typename topology_t::vertex_types_list_public;
-        using edge_types_list_public = typename traits::flattened_edges_t;
+        using vertex_types_list = typename topology_t::vertex_types_list;
+        using edge_types_list = typename traits::edge_types_list;
 
         class graph_data_t {
             using storage_t = decltype(make_graph_data_storage_t(std::make_index_sequence<traits::key_count>{}));
@@ -461,8 +461,8 @@ namespace ugraph {
 
         using typename base_t::topology_type;
         using typename base_t::Manifest;
-        using typename base_t::vertex_types_list_public;
-        using typename base_t::edge_types_list_public;
+        using typename base_t::vertex_types_list;
+        using typename base_t::edge_types_list;
         using typename base_t::graph_data_t;
 
         constexpr Graph(const edges_t&... es) :
