@@ -266,14 +266,10 @@ namespace ugraph {
             ctx.template set_input_ptr<input_index, spec_t>(&data);
         }
 
-        template<std::size_t I, typename F>
-        constexpr void for_each_at(F&& f) {
-            f(*std::get<I>(mModules), std::get<I>(mContexts));
-        }
-
         template<typename F, std::size_t... I>
         constexpr void for_each_impl(F&& f, std::index_sequence<I...>) {
-            (for_each_at<I>(std::forward<F>(f)), ...);
+            auto&& fn = f;
+            (fn(*std::get<I>(mModules), std::get<I>(mContexts)), ...);
         }
 
         constexpr void init_graph_data(graph_data_t& graphData) {
@@ -457,6 +453,10 @@ namespace ugraph {
     class Graph : public ExternalDataGraph<edges_t...> {
         using base_t = ExternalDataGraph<edges_t...>;
 
+        constexpr void rebind_graph_data() {
+            this->init(mGraphData);
+        }
+
     public:
 
         using typename base_t::topology_type;
@@ -467,7 +467,37 @@ namespace ugraph {
 
         constexpr Graph(const edges_t&... es) :
             base_t(es...) {
-            this->init(mGraphData);
+            rebind_graph_data();
+        }
+
+        constexpr Graph(const Graph& other) :
+            base_t(other),
+            mGraphData(other.mGraphData) {
+            rebind_graph_data();
+        }
+
+        constexpr Graph(Graph&& other) noexcept :
+            base_t(std::move(other)),
+            mGraphData(std::move(other.mGraphData)) {
+            rebind_graph_data();
+        }
+
+        constexpr Graph& operator=(const Graph& other) {
+            if (this != &other) {
+                base_t::operator=(other);
+                mGraphData = other.mGraphData;
+                rebind_graph_data();
+            }
+            return *this;
+        }
+
+        constexpr Graph& operator=(Graph&& other) noexcept {
+            if (this != &other) {
+                base_t::operator=(std::move(other));
+                mGraphData = std::move(other.mGraphData);
+                rebind_graph_data();
+            }
+            return *this;
         }
 
         constexpr graph_data_t& graph_data() {

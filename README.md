@@ -94,35 +94,6 @@ auto result = T::apply([](auto... tags){ return sizeof...(tags); });
 
 ---
 
-## Nested Topology
-
-`ugraph::Topology` supports declaring a `NodeTag` whose `module_type` is itself a `Topology` (a nested topology). The nested topology is flattened at compile time so the parent `Topology` behaves as if the inner nodes were declared directly.
-
-Key points:
-- If a `NodeTag`'s `module_type` provides `vertex_types_list_public` and `edges()`, the inner nodes are expanded into the parent's vertex list.
-- Edges that reference a module node are expanded using the module's boundary semantics: outer source -> inner module entries, and module exits -> outer destination. Additionally, any edges declared inside the nested module are preserved.
-
-Quick example:
-
-```cpp
-using IA = ugraph::NodeTag<1001, A>;
-using IB = ugraph::NodeTag<1002, B>;
-using IC = ugraph::NodeTag<1003, C>;
-
-using Inner = ugraph::Topology< std::pair<IA, IB>, std::pair<IB, IC> >;
-using NestedNode = ugraph::NodeTag<2000, Inner>;
-using X = ugraph::NodeTag<3001, A>;
-
-// Outer topology that references the nested module
-using Outer = ugraph::Topology< std::pair<NestedNode, X>, std::pair<X, NestedNode> >;
-
-// At compile time `Outer` is equivalent to declaring the inner nodes and edges directly:
-// IA -> IB -> IC -> 3001 -> IA
-```
-
-Use `Topology::vertex_types_list_public` and `Topology::edges()` on nested module types to inspect the flattened result.
-
-
 ## Graph
 
 Builds a *runtime* data-graph of nodes with:
@@ -258,20 +229,6 @@ g.for_each([](auto& module, auto& ctx){
     module.process(ctx);
 });
 ```
-
----
-
-## Nested Graph
-
-`ugraph::Graph` supports nested graphs: a node's module can itself be another `ugraph::Graph`.
-
-When an inner graph is wrapped with `make_node`, it is flattened into the parent graph:
-- The inner nodes are added to the parent topology.
-- Edges connected to the nested wrapper node are rewired to the inner graph boundaries (entry and exit nodes).
-
-Flattened node IDs are derived from the wrapper node ID:
-- `flat_inner_id = nested_node_id + inner_node_id`
-
 
 ---
 

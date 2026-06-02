@@ -135,7 +135,7 @@ static auto makeVoiceGraph(
     auto vGain = ugraph::make_node<3>(g);
     auto vSink = ugraph::make_node<4>(s);
 
-    auto graph = ugraph::Graph(
+    return ugraph::Graph(
         params[0] | vA.input<Parameters>(),
         params[1] | vB.input<Parameters>(),
         vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(),
@@ -143,8 +143,6 @@ static auto makeVoiceGraph(
         vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(),
         vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
     );
-
-    return graph;
 }
 
 using voice_graph_t = decltype(
