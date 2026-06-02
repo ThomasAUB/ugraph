@@ -358,16 +358,14 @@ namespace ugraph {
         static constexpr bool spec_inputs_wired_impl(std::index_sequence<input_indices...>) {
             constexpr std::size_t node_id = topology_t::template id_at<node_index>();
             return (((traits::template input_index_for_spec<spec_t, node_index, input_indices>() != traits::invalid_index) ||
-                has_input_binding<spec_t, node_id, input_indices>() ||
-                topology_t::template is_entry<node_index>()) && ...);
+                has_input_binding<spec_t, node_id, input_indices>()) && ...);
         }
 
         template<std::size_t node_index, typename spec_t, std::size_t... output_indices>
         static constexpr bool spec_outputs_wired_impl(std::index_sequence<output_indices...>) {
             constexpr std::size_t node_id = topology_t::template id_at<node_index>();
             return (((traits::template output_index_for_spec<spec_t, node_index, output_indices>() != traits::invalid_index) ||
-                has_output_binding<spec_t, node_id, output_indices>() ||
-                topology_t::template is_exit<node_index>()) && ...);
+                has_output_binding<spec_t, node_id, output_indices>()) && ...);
         }
 
         template<std::size_t node_index, typename spec_t>
