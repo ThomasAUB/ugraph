@@ -2,7 +2,7 @@
 #include "ugraph.hpp"
 #include <iostream>
 
-// Tests validating Graph input_count, output_count and data_count
+// Tests validating Graph input_count, output_count and graph_data_t::count
 
 // Create small module types that expose a Manifest suitable for Graph
 
@@ -40,7 +40,7 @@ TEST_CASE("data_graph missing inputs and outputs and total buffer sum") {
 
     using G = decltype(g);
 
-    CHECK(G::template data_count<int>() == 1);
+    CHECK(G::graph_data_t::template count<int>() == 1);
 }
 
 TEST_CASE("data_graph chain producers buffer allocation") {
@@ -59,5 +59,5 @@ TEST_CASE("data_graph chain producers buffer allocation") {
 
     using G = decltype(g);
 
-    CHECK(G::template data_count<int>() == 2);
+    CHECK(G::graph_data_t::template count<int>() == 2);
 }

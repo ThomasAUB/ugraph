@@ -46,7 +46,7 @@ namespace ugraph {
     struct tuple_index_of_type_impl;
 
     template<typename... edges_t>
-    class Graph {
+    class ExternalDataGraph {
 
         using traits = detail::data_graph_traits<edges_t...>;
         using topology_t = typename traits::topology_t;
@@ -72,7 +72,7 @@ namespace ugraph {
         using contexts_tuple_t = decltype(make_contexts_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
         template<typename E>
-        static constexpr void process_binding_fn(const E& e, Graph* self) {
+        static constexpr void process_binding_fn(const E& e, ExternalDataGraph* self) {
             if constexpr (detail::is_data_binding<E>::value) {
                 using bind_t = E;
                 using bt = ::ugraph::binding_traits<bind_t>;
@@ -90,7 +90,7 @@ namespace ugraph {
         }
 
         template<std::size_t... I>
-        static constexpr auto make_graph_data_t(std::index_sequence<I...>) ->
+        static constexpr auto make_graph_data_storage_t(std::index_sequence<I...>) ->
             std::tuple<
             graph_data_slot<
             typename traits::template key_type_at<I>,
@@ -106,20 +106,60 @@ namespace ugraph {
 
         using topology_type = topology_t;
         using Manifest = manifest_t;
-        using vertex_types_list_public = typename topology_t::vertex_types_list_public;
-        using edge_types_list_public = typename traits::flattened_edges_t;
-        using graph_data_t = decltype(make_graph_data_t(std::make_index_sequence<traits::key_count>{}));
+        using vertex_types_list = typename topology_t::vertex_types_list;
+        using edge_types_list = typename traits::edge_types_list;
 
-    private:
+        class graph_data_t {
+            using storage_t = decltype(make_graph_data_storage_t(std::make_index_sequence<traits::key_count>{}));
 
-        graph_data_t mGraphData {};
+            template<typename data_t>
+            using slot_t = std::tuple_element_t<tuple_index_of_type_impl<data_t, storage_t>::value, storage_t>;
+
+            template<typename data_t>
+            using array_t = decltype(std::declval<slot_t<data_t>&>().data);
+
+        public:
+
+            template<typename data_t>
+            static constexpr std::size_t count() {
+                static_assert(tuple_index_of_type_impl<data_t, storage_t>::value != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
+                return std::tuple_size_v<array_t<data_t>>;
+            }
+
+            template<typename data_t>
+            constexpr auto& slots() {
+                constexpr std::size_t index = tuple_index_of_type_impl<data_t, storage_t>::value;
+                static_assert(index != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
+                return std::get<index>(mData).data;
+            }
+
+            template<typename data_t>
+            constexpr const auto& slots() const {
+                constexpr std::size_t index = tuple_index_of_type_impl<data_t, storage_t>::value;
+                static_assert(index != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
+                return std::get<index>(mData).data;
+            }
+
+            template<typename data_t>
+            constexpr auto& slot(std::size_t i) {
+                return slots<data_t>()[i];
+            }
+
+            template<typename data_t>
+            constexpr const auto& slot(std::size_t i) const {
+                return slots<data_t>()[i];
+            }
+
+        private:
+
+            storage_t mData {};
+        };
 
     public:
 
-        constexpr Graph(const edges_t&... es) :
+        constexpr ExternalDataGraph(const edges_t&... es) :
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
             (process_binding_fn(es, this), ...);
-            init_graph_data();
 
             static_assert(
                 is_fully_wired_impl(std::make_index_sequence<topology_t::size()>{}),
@@ -131,36 +171,13 @@ namespace ugraph {
         static constexpr std::size_t size() { return topology_t::size(); }
         static constexpr auto edges() { return topology_t::edges(); }
 
-        template<std::size_t node_id>
-        constexpr auto module_ptr_by_id()
-            -> typename topology_t::template find_type_by_id<node_id>::type::module_type* {
-            static_assert(topology_t::template has_id<node_id>(), "Invalid node id");
-            constexpr std::size_t node_index = [] () constexpr {
-                constexpr auto ids = topology_t::ids();
-                for (std::size_t i = 0; i < topology_t::size(); ++i) {
-                    if (ids[i] == node_id) {
-                        return i;
-                    }
-                }
-                return static_cast<std::size_t>(-1);
-                }();
-            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
-            return std::get<node_index>(mModules);
-        }
-
             template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
         }
 
-        template<typename data_t>
-        static constexpr std::size_t data_count() {
-            using key_t = typename manifest_t::template key_for<data_t>;
-            return traits::template coloring_t<key_t>::data_count();
-        }
-
-        constexpr graph_data_t& graph_data() {
-            return mGraphData;
+        constexpr void init(graph_data_t& graphData) {
+            init_graph_data(graphData);
         }
 
         template<typename stream_t>
@@ -172,17 +189,11 @@ namespace ugraph {
 
         template<std::size_t node_id, std::size_t output_index, typename key_t, typename data_t>
         constexpr void bind_output_key_at(data_t& data) {
-
-            constexpr std::size_t node_index = [] () constexpr {
-                constexpr auto ids = topology_t::ids();
-                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
-                return static_cast<std::size_t>(-1);
-                }();
-            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            constexpr std::size_t node_index = topology_t::template index_of<node_id>();
+            static_assert(node_index != topology_t::invalid_index, "Invalid node id");
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             using spec_t = typename node_manifest::template spec_for<key_t>;
-            using stream_key_t = typename manifest_t::template key_for<spec_t>;
             using storage_t = typename detail::io_traits<spec_t>::type;
             static_assert(node_manifest::template contains<key_t>, "Type not declared in node Manifest");
             static_assert(std::is_same_v<std::remove_cv_t<std::remove_reference_t<data_t>>, storage_t>, "Bound data type does not match node output type");
@@ -191,7 +202,7 @@ namespace ugraph {
 
             // Ensure the specific output port is not already connected in the graph
             constexpr bool is_connected = (
-                traits::template output_index_for<stream_key_t, node_index, output_index>() !=
+                traits::template output_index_for_spec<spec_t, node_index, output_index>() !=
                 traits::invalid_index
                 );
             static_assert(
@@ -205,16 +216,11 @@ namespace ugraph {
 
         template<std::size_t node_id, std::size_t input_index, typename key_t, typename data_t>
         constexpr void bind_input_key_at(data_t& data) {
-            constexpr std::size_t node_index = [] () constexpr {
-                constexpr auto ids = topology_t::ids();
-                for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == node_id) return i;
-                return static_cast<std::size_t>(-1);
-                }();
-            static_assert(node_index != static_cast<std::size_t>(-1), "Invalid node id");
+            constexpr std::size_t node_index = topology_t::template index_of<node_id>();
+            static_assert(node_index != topology_t::invalid_index, "Invalid node id");
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             using spec_t = typename node_manifest::template spec_for<key_t>;
-            using stream_key_t = typename manifest_t::template key_for<spec_t>;
             using storage_t = typename detail::io_traits<spec_t>::type;
             static_assert(node_manifest::template contains<key_t>, "Type not declared in node Manifest");
             static_assert(std::is_same_v<std::remove_cv_t<std::remove_reference_t<data_t>>, storage_t>, "Bound data type does not match node input type");
@@ -223,7 +229,7 @@ namespace ugraph {
 
             // Ensure the specific input port is not already connected in the graph
             constexpr bool is_connected = (
-                traits::template input_index_for<stream_key_t, node_index, input_index>() !=
+                traits::template input_index_for_spec<spec_t, node_index, input_index>() !=
                 traits::invalid_index
                 );
             static_assert(!is_connected, "Requested input port is already connected; cannot bind_input_at");
@@ -232,81 +238,73 @@ namespace ugraph {
             ctx.template set_input_ptr<input_index, spec_t>(&data);
         }
 
-        template<std::size_t I, typename F>
-        constexpr void for_each_at(F&& f) {
-            f(*std::get<I>(mModules), std::get<I>(mContexts));
-        }
-
         template<typename F, std::size_t... I>
         constexpr void for_each_impl(F&& f, std::index_sequence<I...>) {
-            (for_each_at<I>(std::forward<F>(f)), ...);
+            auto&& fn = f;
+            (fn(*std::get<I>(mModules), std::get<I>(mContexts)), ...);
         }
 
-        constexpr void init_graph_data() {
-            init_graph_data_impl(std::make_index_sequence<topology_t::size()>{});
+        constexpr void init_graph_data(graph_data_t& graphData) {
+            init_graph_data_impl(graphData, std::make_index_sequence<topology_t::size()>{});
         }
 
         template<std::size_t node_index, std::size_t... tidx>
-        constexpr void init_node_types(std::index_sequence<tidx...>) {
+        constexpr void init_node_types(graph_data_t& graphData, std::index_sequence<tidx...>) {
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             auto& ctx = std::get<node_index>(mContexts);
-            (init_type<node_index, typename node_manifest::template spec_at<tidx>>(ctx), ...);
+            (init_type<node_index, typename node_manifest::template spec_at<tidx>>(graphData, ctx), ...);
         }
 
         template<std::size_t node_index, typename spec_t, typename ctx_t>
-        constexpr void init_type(ctx_t& ctx) {
+        constexpr void init_type(graph_data_t& graphData, ctx_t& ctx) {
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;;
-            using data_t = typename detail::io_traits<spec_t>::type;
-            using key_t = typename manifest_t::template key_for<spec_t>;
-            constexpr std::size_t manifest_index = tuple_index_of_type_impl<key_t, graph_data_t>::value;
-
-            auto& arr = std::get<manifest_index>(mGraphData).data;
 
             constexpr std::size_t in_count = node_manifest::template input_count<spec_t>();
-            init_inputs_impl<node_index, spec_t>(ctx, arr, std::make_index_sequence<in_count>{});
+            init_inputs_impl<node_index, spec_t>(graphData, ctx, std::make_index_sequence<in_count>{});
 
             constexpr std::size_t out_count = node_manifest::template output_count<spec_t>();
-            init_outputs_impl<node_index, spec_t>(ctx, arr, std::make_index_sequence<out_count>{});
+            init_outputs_impl<node_index, spec_t>(graphData, ctx, std::make_index_sequence<out_count>{});
         }
 
         template<std::size_t node_index, typename spec_t, typename ctx_t, std::size_t... ps>
         constexpr void init_inputs_impl(
+            graph_data_t& graphData,
             ctx_t& ctx,
-            std::array<typename detail::io_traits<spec_t>::type, traits::template coloring_t<typename manifest_t::template key_for<spec_t>>::data_count()>& arr,
             std::index_sequence<ps...>
         ) {
             (([&] {
-                auto cur = ctx.template inputs_ptr<spec_t>();
-                constexpr std::size_t data_index = traits::template input_index_for<typename manifest_t::template key_for<spec_t>, node_index, ps>();
-                auto* desired = (data_index != traits::invalid_index)
-                    ? &arr[data_index]
-                    : nullptr;
-                if (cur[ps] == nullptr) ctx.template set_input_ptr<ps, spec_t>(desired);
+                constexpr std::size_t data_index = traits::template input_index_for_spec<spec_t, node_index, ps>();
+                if constexpr (data_index != traits::invalid_index) {
+                    using key_t = typename traits::template input_key_for_spec<spec_t, node_index, ps>::type;
+                    auto& arr = graphData.template slots<key_t>();
+                    ctx.template set_input_ptr<ps, spec_t>(&arr[data_index]);
+                }
                 }()), ...);
         }
 
         template<std::size_t node_index, typename spec_t, typename ctx_t, std::size_t... ps>
         constexpr void init_outputs_impl(
+            graph_data_t& graphData,
             ctx_t& ctx,
-            std::array<typename detail::io_traits<spec_t>::type, traits::template coloring_t<typename manifest_t::template key_for<spec_t>>::data_count()>& arr,
             std::index_sequence<ps...>
         ) {
             (([&] {
-                auto cur = ctx.template outputs_ptr<spec_t>();
-                constexpr std::size_t data_index = traits::template output_index_for<typename manifest_t::template key_for<spec_t>, node_index, ps>();
-                auto* desired = (data_index != traits::invalid_index)
-                    ? &arr[data_index]
-                    : nullptr;
-                if (cur[ps] == nullptr) ctx.template set_output_ptr<ps, spec_t>(desired);
+                constexpr std::size_t data_index = traits::template output_index_for_spec<spec_t, node_index, ps>();
+                if constexpr (data_index != traits::invalid_index) {
+                    using key_t = typename traits::template output_key_for_spec<spec_t, node_index, ps>::type;
+                    auto& arr = graphData.template slots<key_t>();
+                    ctx.template set_output_ptr<ps, spec_t>(&arr[data_index]);
+                }
                 }()), ...);
         }
 
         template<std::size_t... Is>
-        constexpr void init_graph_data_impl(std::index_sequence<Is...>) {
+        constexpr void init_graph_data_impl(graph_data_t& graphData, std::index_sequence<Is...>) {
             (
                 init_node_types<Is>(
+                    graphData,
                     std::make_index_sequence<node_type_at<Is>::module_type::Manifest::spec_count>{}
                 ), ...
                 );
@@ -356,46 +354,20 @@ namespace ugraph {
             return (false || ... || output_binding_matches<spec_t, node_id, output_index, edges_t>::value);
         }
 
-        template<std::size_t node_index>
-        static constexpr bool is_entry_node() {
-            constexpr std::size_t node_id = topology_t::template id_at<node_index>();
-            constexpr auto graph_edges = topology_t::edges();
-            for (const auto& edge : graph_edges) {
-                if (edge.second == node_id) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        template<std::size_t node_index>
-        static constexpr bool is_exit_node() {
-            constexpr std::size_t node_id = topology_t::template id_at<node_index>();
-            constexpr auto graph_edges = topology_t::edges();
-            for (const auto& edge : graph_edges) {
-                if (edge.first == node_id) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
         template<std::size_t node_index, typename spec_t, std::size_t... input_indices>
         static constexpr bool spec_inputs_wired_impl(std::index_sequence<input_indices...>) {
             constexpr std::size_t node_id = topology_t::template id_at<node_index>();
-            using key_t = typename manifest_t::template key_for<spec_t>;
-            return (((traits::template input_index_for<key_t, node_index, input_indices>() != traits::invalid_index) ||
+            return (((traits::template input_index_for_spec<spec_t, node_index, input_indices>() != traits::invalid_index) ||
                 has_input_binding<spec_t, node_id, input_indices>() ||
-                is_entry_node<node_index>()) && ...);
+                topology_t::template is_entry<node_index>()) && ...);
         }
 
         template<std::size_t node_index, typename spec_t, std::size_t... output_indices>
         static constexpr bool spec_outputs_wired_impl(std::index_sequence<output_indices...>) {
             constexpr std::size_t node_id = topology_t::template id_at<node_index>();
-            using key_t = typename manifest_t::template key_for<spec_t>;
-            return (((traits::template output_index_for<key_t, node_index, output_indices>() != traits::invalid_index) ||
+            return (((traits::template output_index_for_spec<spec_t, node_index, output_indices>() != traits::invalid_index) ||
                 has_output_binding<spec_t, node_id, output_indices>() ||
-                is_exit_node<node_index>()) && ...);
+                topology_t::template is_exit<node_index>()) && ...);
         }
 
         template<std::size_t node_index, typename spec_t>
@@ -424,12 +396,75 @@ namespace ugraph {
 
     };
 
+    template<typename... edges_t>
+    class Graph : public ExternalDataGraph<edges_t...> {
+        using base_t = ExternalDataGraph<edges_t...>;
+
+        constexpr void rebind_graph_data() {
+            this->init(mGraphData);
+        }
+
+    public:
+
+        using typename base_t::topology_type;
+        using typename base_t::Manifest;
+        using typename base_t::vertex_types_list;
+        using typename base_t::edge_types_list;
+        using typename base_t::graph_data_t;
+
+        constexpr Graph(const edges_t&... es) :
+            base_t(es...) {
+            rebind_graph_data();
+        }
+
+        constexpr Graph(const Graph& other) :
+            base_t(other),
+            mGraphData(other.mGraphData) {
+            rebind_graph_data();
+        }
+
+        constexpr Graph(Graph&& other) noexcept :
+            base_t(std::move(other)),
+            mGraphData(std::move(other.mGraphData)) {
+            rebind_graph_data();
+        }
+
+        constexpr Graph& operator=(const Graph& other) {
+            if (this != &other) {
+                base_t::operator=(other);
+                mGraphData = other.mGraphData;
+                rebind_graph_data();
+            }
+            return *this;
+        }
+
+        constexpr Graph& operator=(Graph&& other) noexcept {
+            if (this != &other) {
+                base_t::operator=(std::move(other));
+                mGraphData = std::move(other.mGraphData);
+                rebind_graph_data();
+            }
+            return *this;
+        }
+
+        constexpr graph_data_t& graph_data() {
+            return mGraphData;
+        }
+
+        constexpr const graph_data_t& graph_data() const {
+            return mGraphData;
+        }
+
+    private:
+
+        graph_data_t mGraphData {};
+    };
+
     template<typename data_t, typename tuple_t, std::size_t I>
     struct tuple_index_of_type_impl<data_t, tuple_t, I, true> {
         using arr_t = std::tuple_element_t<I, tuple_t>;
-        using elem_t = typename arr_t::data_type;
         using key_t = typename arr_t::spec_type;
-        static constexpr std::size_t value = (std::is_same_v<data_t, elem_t> || std::is_same_v<data_t, key_t>)
+        static constexpr std::size_t value = std::is_same_v<data_t, key_t>
             ? I
             : tuple_index_of_type_impl<data_t, tuple_t, I + 1>::value;
     };
@@ -439,13 +474,8 @@ namespace ugraph {
         static constexpr std::size_t value = static_cast<std::size_t>(-1);
     };
 
-    template<typename data_t, typename graph_data_t>
-    static constexpr data_t& data_at(graph_data_t& graph_data, std::size_t i) {
-        constexpr std::size_t index = tuple_index_of_type_impl<data_t, graph_data_t>::value;
-        static_assert(index != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
-        auto& arr = std::get<index>(graph_data).data;
-        return arr[i];
-    }
+    template<typename E0, typename... ERest>
+    ExternalDataGraph(E0 const&, ERest const&...) -> ExternalDataGraph<std::decay_t<E0>, std::decay_t<ERest>...>;
 
     template<typename E0, typename... ERest>
     Graph(E0 const&, ERest const&...) -> Graph<std::decay_t<E0>, std::decay_t<ERest>...>;

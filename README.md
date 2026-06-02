@@ -6,7 +6,8 @@
 Header‑only C++17 utilities for *static* direct acyclic graphs:
 
 * `Topology` – compile‑time topological ordering & cycle detection (no storage, no allocations)
-* `Graph` – runtime traversal + minimal reusable buffer slot assignment
+* `ExternalDataGraph` – runtime traversal + explicit external buffer storage
+* `Graph` – owning runtime graph wrapper with built-in buffer storage
 
 Single include:
 ```cpp
@@ -93,41 +94,17 @@ auto result = T::apply([](auto... tags){ return sizeof...(tags); });
 
 ---
 
-## Nested Topology
-
-`ugraph::Topology` supports declaring a `NodeTag` whose `module_type` is itself a `Topology` (a nested topology). The nested topology is flattened at compile time so the parent `Topology` behaves as if the inner nodes were declared directly.
-
-Key points:
-- If a `NodeTag`'s `module_type` provides `vertex_types_list_public` and `edges()`, the inner nodes are expanded into the parent's vertex list.
-- Edges that reference a module node are expanded using the module's boundary semantics: outer source -> inner module entries, and module exits -> outer destination. Additionally, any edges declared inside the nested module are preserved.
-
-Quick example:
-
-```cpp
-using IA = ugraph::NodeTag<1001, A>;
-using IB = ugraph::NodeTag<1002, B>;
-using IC = ugraph::NodeTag<1003, C>;
-
-using Inner = ugraph::Topology< std::pair<IA, IB>, std::pair<IB, IC> >;
-using NestedNode = ugraph::NodeTag<2000, Inner>;
-using X = ugraph::NodeTag<3001, A>;
-
-// Outer topology that references the nested module
-using Outer = ugraph::Topology< std::pair<NestedNode, X>, std::pair<X, NestedNode> >;
-
-// At compile time `Outer` is equivalent to declaring the inner nodes and edges directly:
-// IA -> IB -> IC -> 3001 -> IA
-```
-
-Use `Topology::vertex_types_list_public` and `Topology::edges()` on nested module types to inspect the flattened result.
-
-
 ## Graph
 
 Builds a *runtime* data-graph of nodes with:
 * Compile‑time cycle detection and ordering (reuses Topology logic)
 * Port-aware dataflow traversal
 * Minimal buffer “slot” reuse via interval coloring (computes the minimum number of data instances needed for the pipeline)
+
+There are two runtime graph flavors:
+
+* `ugraph::ExternalDataGraph<...>` stores graph structure and contexts, but takes its `graph_data_t` explicitly through `init(graphData)`.
+* `ugraph::Graph<...>` inherits from `ExternalDataGraph`, owns its `graph_data_t`, and calls `init(...)` automatically during construction.
 
 ### Defining Runtime Nodes
 
@@ -197,7 +174,50 @@ auto g = ugraph::Graph(
 
 // Graph-owned storage is initialized during construction.
 // Access the owned storage when you need to seed buffer-backed values.
-auto& data = g.graph_data();
+auto& graphData = g.graph_data();
+
+using graph_t = decltype(g);
+static_assert(graph_t::graph_data_t::template count<int>() == 2);
+graphData.template slot<int>(0) = 5;
+```
+
+### Shared External Storage
+
+Use `ExternalDataGraph` when multiple graph instances should reuse the same `graph_data_t`.
+
+```cpp
+using shared_graph_t = ugraph::ExternalDataGraph<
+    decltype(nSrc.output<int>() >> nMerger.input<int, 0>()),
+    decltype(nSrc.output<int>() >> nMerger.input<int, 1>()),
+    decltype(nMerger.output<int>() >> nSnk.input<int>())
+>;
+
+shared_graph_t::graph_data_t sharedData;
+
+auto g0 = shared_graph_t(
+    nSrc.output<int>() >> nMerger.input<int, 0>(),
+    nSrc.output<int>() >> nMerger.input<int, 1>(),
+    nMerger.output<int>() >> nSnk.input<int>()
+);
+
+auto g1 = shared_graph_t(
+    nSrc.output<int>() >> nMerger.input<int, 0>(),
+    nSrc.output<int>() >> nMerger.input<int, 1>(),
+    nMerger.output<int>() >> nSnk.input<int>()
+);
+
+g0.init(sharedData);
+g1.init(sharedData);
+```
+
+After `init(sharedData)`, the graph contexts point into the provided storage. `ExternalDataGraph` does not own or retain a separate data instance.
+
+`graph_data_t` exposes typed slot access:
+
+```cpp
+sharedData.template slot<int>(0) = 12;
+auto& allIntSlots = sharedData.template slots<int>();
+static_assert(shared_graph_t::graph_data_t::template count<int>() == 2);
 ```
 
 ### Executing the Pipeline
@@ -209,20 +229,6 @@ g.for_each([](auto& module, auto& ctx){
     module.process(ctx);
 });
 ```
-
----
-
-## Nested Graph
-
-`ugraph::Graph` supports nested graphs: a node's module can itself be another `ugraph::Graph`.
-
-When an inner graph is wrapped with `make_node`, it is flattened into the parent graph:
-- The inner nodes are added to the parent topology.
-- Edges connected to the nested wrapper node are rewired to the inner graph boundaries (entry and exit nodes).
-
-Flattened node IDs are derived from the wrapper node ID:
-- `flat_inner_id = nested_node_id + inner_node_id`
-
 
 ---
 
@@ -311,7 +317,8 @@ These options let you supply or capture data for nodes that are intentionally le
 | Compile-time id| `NodeTag<ID, Module, Priority>`        | ID + payload type (no storage)        |
 | Runtime node   | `Node<ID, Module, Manifest, Priority>` | Wraps user instance + port counts     |
 | Static graph   | `Topology<Edges...>`                   | Ordering, cycle check, visitation     |
-| Runtime view   | `Graph<Edges...>`                      | Traversal + minimal buffer slot reuse |
+| External-storage graph | `ExternalDataGraph<Edges...>` | Traversal + explicit external storage |
+| Owning runtime graph | `Graph<Edges...>`                | ExternalDataGraph + owned storage     |
 
 ---
 

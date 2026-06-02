@@ -118,7 +118,7 @@ private:
         mPrevBufferSize = size;
 
         for (std::size_t i = 0; i < mSynthBufferStorage.size(); i++) {
-            ugraph::data_at<AudioBuff>(mGraph.graph_data(), i) = { mSynthBufferStorage[i].data(), size };
+            mGraph.graph_data().template slot<AudioBuff>(i) = { mSynthBufferStorage[i].data(), size };
         }
 
     }
@@ -144,7 +144,7 @@ private:
             )
             );
 
-    static constexpr auto synth_buffer_count = synth_graph_t::data_count<AudioBuff>();
+    static constexpr auto synth_buffer_count = synth_graph_t::graph_data_t::template count<AudioBuff>();
     static constexpr uint32_t max_buffer_size = 1024;
     using buffer_t = std::array<float, max_buffer_size>;
 
