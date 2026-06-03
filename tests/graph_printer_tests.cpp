@@ -54,16 +54,28 @@ TEST_CASE("graph print test") {
         std::string out = oss.str();
 
         CHECK(out.rfind("```mermaid\nflowchart LR\n", 0) == 0);
-        CHECK(out.find("101(Stage 101)") != std::string::npos);
-        CHECK(out.find("102(Stage 102)") != std::string::npos);
-        CHECK(out.find("103(Stage 103)") != std::string::npos);
-        CHECK(out.find("104(Stage 104)") != std::string::npos);
+        CHECK(out.find("101(Stage)") != std::string::npos);
+        CHECK(out.find("102(Stage)") != std::string::npos);
+        CHECK(out.find("103(Stage)") != std::string::npos);
+        CHECK(out.find("104(Stage)") != std::string::npos);
 
         CHECK(out.find("101 --> 103") != std::string::npos);
         CHECK(out.find("102 --> 103") != std::string::npos);
         CHECK(out.find("103 --> 104") != std::string::npos);
 
         //printOutput("graph test", out);
+    }
+
+    {
+        std::ostringstream oss;
+        ugraph::print_graph<topo_t>(oss, "", false, true);
+
+        std::string out = oss.str();
+
+        CHECK(out.find("101(Stage 101)") != std::string::npos);
+        CHECK(out.find("102(Stage 102)") != std::string::npos);
+        CHECK(out.find("103(Stage 103)") != std::string::npos);
+        CHECK(out.find("104(Stage 104)") != std::string::npos);
     }
 
     // test print_pipeline
@@ -82,6 +94,17 @@ TEST_CASE("graph print test") {
         CHECK(out.find("102 --> 101 --> 103 --> 104") != std::string::npos);
 
         //printOutput("pipeline graph test", out);
+    }
+
+    {
+        std::ostringstream oss;
+        ugraph::print_pipeline<topo_t>(oss, "", false);
+        std::string out = oss.str();
+
+        CHECK(out.find("101(Stage)") != std::string::npos);
+        CHECK(out.find("102(Stage)") != std::string::npos);
+        CHECK(out.find("103(Stage)") != std::string::npos);
+        CHECK(out.find("104(Stage)") != std::string::npos);
     }
 }
 
@@ -105,10 +128,10 @@ TEST_CASE("topology print test") {
         std::string out = oss.str();
 
         CHECK(out.rfind("```mermaid\nflowchart LR\n", 0) == 0);
-        CHECK(out.find("101(Stage 101)") != std::string::npos);
-        CHECK(out.find("102(Stage 102)") != std::string::npos);
-        CHECK(out.find("103(Stage 103)") != std::string::npos);
-        CHECK(out.find("104(Stage 104)") != std::string::npos);
+        CHECK(out.find("101(Stage)") != std::string::npos);
+        CHECK(out.find("102(Stage)") != std::string::npos);
+        CHECK(out.find("103(Stage)") != std::string::npos);
+        CHECK(out.find("104(Stage)") != std::string::npos);
 
         CHECK(out.find("101 --> 103") != std::string::npos);
         CHECK(out.find("102 --> 103") != std::string::npos);
@@ -152,11 +175,11 @@ TEST_CASE("split topology print test") {
         std::string out = oss.str();
 
         CHECK(out.rfind("```mermaid\nflowchart LR\n", 0) == 0);
-        CHECK(out.find("101(Stage 101)") != std::string::npos);
-        CHECK(out.find("102(Stage 102)") != std::string::npos);
-        CHECK(out.find("103(Stage 103)") != std::string::npos);
-        CHECK(out.find("104(Stage 104)") != std::string::npos);
-        CHECK(out.find("105(Stage 105)") != std::string::npos);
+        CHECK(out.find("101(Stage)") != std::string::npos);
+        CHECK(out.find("102(Stage)") != std::string::npos);
+        CHECK(out.find("103(Stage)") != std::string::npos);
+        CHECK(out.find("104(Stage)") != std::string::npos);
+        CHECK(out.find("105(Stage)") != std::string::npos);
 
         CHECK(out.find("101 --> 103\n") != std::string::npos);
         CHECK(out.find("102 --> 103\n") != std::string::npos);

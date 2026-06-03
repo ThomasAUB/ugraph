@@ -100,8 +100,6 @@ TEST_CASE("graph data propagation") {
         }
     );
 
-    graph.print(std::cout);
-
     CHECK(graph_t::graph_data_t::template count<MyData1>() == 2);
     CHECK(graph_t::graph_data_t::template count<MyEvent>() == 1);
     CHECK(m1.last_in == 1);
@@ -140,17 +138,121 @@ TEST_CASE("graph print output") {
     const std::string expected =
         "```mermaid\n"
         "flowchart LR\n"
-        "100(Source 100)\n"
-        "101(Module1 101)\n"
-        "102(Sink 102)\n"
-        "100 --> 101\n"
-        "101 --> 102\n"
-        "100 --> 102\n"
-        "100 --> 102\n"
+        "100(Source)\n"
+        "101(Module1)\n"
+        "102(Sink)\n"
+        "100 -->|int| 101\n"
+        "101 -->|int| 102\n"
+        "100 -->|int| 102\n"
+        "100 -->|vector<int>| 102\n"
         "```\n";
 
     CHECK(oss.str() == expected);
+}
 
+TEST_CASE("graph print output with edge types") {
+
+    Source src;
+    Module1 m1;
+    Sink sink;
+
+    auto srcNode = ugraph::make_node<100>(src);
+    auto m1Node = ugraph::make_node<101>(m1);
+    auto sinkNode = ugraph::make_node<102>(sink);
+
+    ugraph::Graph graph(
+        srcNode.output<MyData1>() >> m1Node.input<MyData1>(),
+        m1Node.output<MyData1>() >> sinkNode.input<MyData1, 0>(),
+        srcNode.output<MyData1>() >> sinkNode.input<MyData1, 1>(),
+        srcNode.output<MyEvent>() >> sinkNode.input<MyEvent>()
+    );
+
+    std::ostringstream oss;
+    graph.print(oss, "", true);
+
+    const std::string expected =
+        "```mermaid\n"
+        "flowchart LR\n"
+        "100(Source)\n"
+        "101(Module1)\n"
+        "102(Sink)\n"
+        "100 -->|int| 101\n"
+        "101 -->|int| 102\n"
+        "100 -->|int| 102\n"
+        "100 -->|vector<int>| 102\n"
+        "```\n";
+
+    CHECK(oss.str() == expected);
+}
+
+TEST_CASE("graph print output without vertex ids") {
+
+    Source src;
+    Module1 m1;
+    Sink sink;
+
+    auto srcNode = ugraph::make_node<100>(src);
+    auto m1Node = ugraph::make_node<101>(m1);
+    auto sinkNode = ugraph::make_node<102>(sink);
+
+    ugraph::Graph graph(
+        srcNode.output<MyData1>() >> m1Node.input<MyData1>(),
+        m1Node.output<MyData1>() >> sinkNode.input<MyData1, 0>(),
+        srcNode.output<MyData1>() >> sinkNode.input<MyData1, 1>(),
+        srcNode.output<MyEvent>() >> sinkNode.input<MyEvent>()
+    );
+
+    std::ostringstream oss;
+    graph.print(oss, "", true, false);
+
+    const std::string expected =
+        "```mermaid\n"
+        "flowchart LR\n"
+        "100(Source)\n"
+        "101(Module1)\n"
+        "102(Sink)\n"
+        "100 -->|int| 101\n"
+        "101 -->|int| 102\n"
+        "100 -->|int| 102\n"
+        "100 -->|vector<int>| 102\n"
+        "```\n";
+
+    CHECK(oss.str() == expected);
+}
+
+TEST_CASE("graph print output with explicit vertex ids") {
+
+    Source src;
+    Module1 m1;
+    Sink sink;
+
+    auto srcNode = ugraph::make_node<100>(src);
+    auto m1Node = ugraph::make_node<101>(m1);
+    auto sinkNode = ugraph::make_node<102>(sink);
+
+    ugraph::Graph graph(
+        srcNode.output<MyData1>() >> m1Node.input<MyData1>(),
+        m1Node.output<MyData1>() >> sinkNode.input<MyData1, 0>(),
+        srcNode.output<MyData1>() >> sinkNode.input<MyData1, 1>(),
+        srcNode.output<MyEvent>() >> sinkNode.input<MyEvent>()
+    );
+
+    std::ostringstream oss;
+    graph.print(oss, "", true, true);
+
+    const std::string expected =
+        "```mermaid\n"
+        "flowchart LR\n"
+        "100(Source 100)\n"
+        "101(Module1 101)\n"
+        "102(Sink 102)\n"
+        "100 -->|int| 101\n"
+        "101 -->|int| 102\n"
+        "100 -->|int| 102\n"
+        "100 -->|vector<int>| 102\n"
+        "```\n";
+
+    CHECK(oss.str() == expected);
 }
 
 TEST_CASE("external data graph reuses external graph data") {
@@ -158,10 +260,12 @@ TEST_CASE("external data graph reuses external graph data") {
     Source srcA;
     Module1 m1A;
     Sink sinkA;
+    MyData1 mdInA = 78;
 
     Source srcB;
     Module1 m1B;
     Sink sinkB;
+    MyData1 mdInB = 91;
 
     auto srcNodeA = ugraph::make_node<100>(srcA);
     auto m1NodeA = ugraph::make_node<101>(m1A);
@@ -171,6 +275,7 @@ TEST_CASE("external data graph reuses external graph data") {
         decltype(srcNodeA.output<MyData1>() >> m1NodeA.input<MyData1>()),
         decltype(m1NodeA.output<MyData1>() >> sinkNodeA.input<MyData1, 0>()),
         decltype(srcNodeA.output<MyData1>() >> sinkNodeA.input<MyData1, 1>()),
+        decltype(mdInA | sinkNodeA.input<MyData1, 2>()),
         decltype(srcNodeA.output<MyEvent>() >> sinkNodeA.input<MyEvent>())
     >;
 
@@ -180,6 +285,7 @@ TEST_CASE("external data graph reuses external graph data") {
         srcNodeA.output<MyData1>() >> m1NodeA.input<MyData1>(),
         m1NodeA.output<MyData1>() >> sinkNodeA.input<MyData1, 0>(),
         srcNodeA.output<MyData1>() >> sinkNodeA.input<MyData1, 1>(),
+        mdInA | sinkNodeA.input<MyData1, 2>(),
         srcNodeA.output<MyEvent>() >> sinkNodeA.input<MyEvent>()
     );
     graphA.init(sharedData);
@@ -192,6 +298,7 @@ TEST_CASE("external data graph reuses external graph data") {
         srcNodeB.output<MyData1>() >> m1NodeB.input<MyData1>(),
         m1NodeB.output<MyData1>() >> sinkNodeB.input<MyData1, 0>(),
         srcNodeB.output<MyData1>() >> sinkNodeB.input<MyData1, 1>(),
+        mdInB | sinkNodeB.input<MyData1, 2>(),
         srcNodeB.output<MyEvent>() >> sinkNodeB.input<MyEvent>()
     );
     graphB.init(sharedData);
@@ -215,4 +322,22 @@ TEST_CASE("external data graph reuses external graph data") {
     REQUIRE(sharedEvents.size() == 2);
     CHECK(sharedEvents[0] == 123);
     CHECK(sharedEvents[1] == 456);
+
+    std::ostringstream oss;
+    graphA.print(oss, "", true, true);
+
+    const std::string expected =
+        "```mermaid\n"
+        "flowchart LR\n"
+        "100(Source 100)\n"
+        "101(Module1 101)\n"
+        "102(Sink 102)\n"
+        "100 -->|int| 101\n"
+        "101 -->|int| 102\n"
+        "100 -->|int| 102\n"
+        "100 -->|vector<int>| 102\n"
+        "```\n";
+
+    CHECK(oss.str() == expected);
+
 }

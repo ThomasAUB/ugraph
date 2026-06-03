@@ -27,17 +27,25 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <string_view>
 #include <type_traits>
 
+#include "manifest.hpp"
+#include "type_traits/edge_traits.hpp"
+#include "type_traits/type_list.hpp"
+
 namespace ugraph {
 
-    template<typename graph_t, typename stream_t>
-    void print_graph(stream_t& stream, const std::string_view& inGraphName = "");
+    template<typename... edges_t>
+    class Topology;
 
     template<typename graph_t, typename stream_t>
-    void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "");
+    void print_graph(stream_t& stream, const std::string_view& inGraphName = "", bool inShowLinkTypes = true, bool inShowVertexIds = false);
+
+    template<typename graph_t, typename stream_t>
+    void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "", bool inShowVertexIds = true);
 
 
 
@@ -169,6 +177,35 @@ namespace ugraph {
             return type_name<dt>();
         }
 
+        template<typename T, typename = void>
+        struct printer_edge_types {
+            using type = typename std::decay_t<T>::edge_types_list;
+        };
+
+        template<typename... edges_t>
+        struct printer_edge_types<Topology<edges_t...>, void> {
+            using type = detail::type_list<edges_t...>;
+        };
+
+        template<typename edge_t, typename = void>
+        struct printer_edge_label {
+            static constexpr bool available = false;
+            static constexpr std::string_view value() {
+                return {};
+            }
+        };
+
+        template<typename edge_t>
+        struct printer_edge_label<edge_t, std::void_t<typename detail::edge_traits<edge_t>::src_port_t::spec_type>> {
+            using spec_t = typename detail::edge_traits<edge_t>::src_port_t::spec_type;
+            using data_t = typename detail::io_traits<spec_t>::type;
+
+            static constexpr bool available = true;
+            static constexpr std::string_view value() {
+                return type_name<data_t>();
+            }
+        };
+
         template<typename stream_t>
         void print_header(stream_t& stream, const std::string_view& inGraphName) {
             stream << "```mermaid\n";
@@ -193,31 +230,59 @@ namespace ugraph {
         struct printer_topology<T, std::void_t<typename T::topology_type>> { using type = typename T::topology_type; };
 
         template<typename graph_t, typename stream_t>
-        void print_node_names(stream_t& stream) {
+        void print_node_names(stream_t& stream, bool inShowVertexIds) {
             using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
             topo_t::for_each(
                 [&] (auto v) {
                     using vt = decltype(v);
-                    stream << vt::id() << "(" << node_name<vt>() << " " << vt::id() << ")\n";
+                    stream << vt::id() << "(" << node_name<vt>();
+                    if (inShowVertexIds) {
+                        stream << " " << vt::id();
+                    }
+                    stream << ")\n";
                 }
             );
+        }
+
+        template<typename graph_t, typename stream_t, std::size_t... I>
+        void print_graph_edges_impl(stream_t& stream, bool inShowLinkTypes, std::index_sequence<I...>) {
+            using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
+            using edge_list_t = typename printer_edge_types<std::decay_t<graph_t>>::type;
+            constexpr auto edges_ids = topo_t::edges();
+
+            (([&] {
+                using edge_t = typename detail::type_list_at<I, edge_list_t>::type;
+                const auto& edge = edges_ids[I];
+
+                stream << edge.first << " -->";
+                if constexpr (printer_edge_label<edge_t>::available) {
+                    if (inShowLinkTypes) {
+                        stream << "|" << printer_edge_label<edge_t>::value() << "|";
+                    }
+                }
+                stream << " " << edge.second << "\n";
+                }()), ...);
+        }
+
+        template<typename graph_t, typename stream_t>
+        void print_graph_edges(stream_t& stream, bool inShowLinkTypes) {
+            using edge_list_t = typename printer_edge_types<std::decay_t<graph_t>>::type;
+            constexpr std::size_t edge_count = detail::type_list_size<edge_list_t>::value;
+            print_graph_edges_impl<graph_t>(stream, inShowLinkTypes, std::make_index_sequence<edge_count>{});
         }
     }
 
     template<typename graph_t, typename stream_t>
-    void print_graph(stream_t& stream, const std::string_view& inGraphName) {
+    void print_graph(stream_t& stream, const std::string_view& inGraphName, bool inShowLinkTypes, bool inShowVertexIds) {
         using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
 
         constexpr auto edges_ids = topo_t::edges();
         constexpr auto ids = topo_t::ids();
         print_header(stream, inGraphName);
 
-        print_node_names<graph_t>(stream);
+        print_node_names<graph_t>(stream, inShowVertexIds);
 
-        // Print each configured edge as a mermaid arrow
-        for (const auto& e : edges_ids) {
-            stream << e.first << " --> " << e.second << "\n";
-        }
+        print_graph_edges<graph_t>(stream, inShowLinkTypes);
 
         // Print any isolated vertices (not appearing in edges)
         for (auto vid : ids) {
@@ -234,13 +299,13 @@ namespace ugraph {
     }
 
     template<typename graph_t, typename stream_t>
-    void print_pipeline(stream_t& stream, const std::string_view& inGraphName) {
+    void print_pipeline(stream_t& stream, const std::string_view& inGraphName, bool inShowVertexIds) {
         using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
 
         constexpr auto ids = topo_t::ids();
         print_header(stream, inGraphName);
 
-        print_node_names<graph_t>(stream);
+        print_node_names<graph_t>(stream, inShowVertexIds);
 
         for (std::size_t i = 0; i < ids.size(); ++i) {
             stream << ids[i];

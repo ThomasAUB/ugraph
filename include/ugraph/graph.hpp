@@ -171,7 +171,7 @@ namespace ugraph {
         static constexpr std::size_t size() { return topology_t::size(); }
         static constexpr auto edges() { return topology_t::edges(); }
 
-            template<typename F>
+        template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
         }
@@ -181,8 +181,8 @@ namespace ugraph {
         }
 
         template<typename stream_t>
-        void print(stream_t& stream, const std::string_view& inGraphName = "") const {
-            ugraph::print_graph<topology_t>(stream, inGraphName);
+        void print(stream_t& stream, const std::string_view& inGraphName = "", bool inShowLinkTypes = true, bool inShowVertexIds = false) const {
+            ugraph::print_graph<std::decay_t<decltype(*this)>>(stream, inGraphName, inShowLinkTypes, inShowVertexIds);
         }
 
     private:
