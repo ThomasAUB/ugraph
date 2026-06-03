@@ -96,6 +96,24 @@ namespace {
         return oss.str();
     }
 
+    std::string expected_external_graph_print_output() {
+        std::ostringstream oss;
+        oss << "```mermaid\n";
+        oss << "flowchart LR\n";
+        oss << "100(Source 100)\n";
+        oss << "101(Module1 101)\n";
+        oss << "102(Sink 102)\n";
+        oss << "data_0(( ))\n";
+        oss << "100 -->|int| 101\n";
+        oss << "101 -->|int| 102\n";
+        oss << "100 -->|int| 102\n";
+        oss << "100 -->|" << ugraph::type_name<MyEvent>() << "| 102\n";
+        oss << "data_0 -->|int| 102\n";
+        oss << "```\n";
+
+        return oss.str();
+    }
+
 }
 
 TEST_CASE("graph data propagation") {
@@ -139,6 +157,17 @@ TEST_CASE("graph data propagation") {
     CHECK(sink.inputs[2] == 78);
     CHECK(sink.event_seen);
     CHECK(sink.event_value == 789);
+
+    std::ostringstream oss;
+    graph.print(oss, "", true, true);
+    const std::string out = oss.str();
+
+    CHECK(out.find("data_0(( ))") != std::string::npos);
+    CHECK(out.find("data_1(( ))") != std::string::npos);
+    CHECK(out.find("data_2(( ))") != std::string::npos);
+    CHECK(out.find("data_0 -->|int| 100") != std::string::npos);
+    CHECK(out.find("data_1 -->|int| 102") != std::string::npos);
+    CHECK(out.find("102 -->|int| data_2") != std::string::npos);
 
 }
 
@@ -315,8 +344,57 @@ TEST_CASE("external data graph reuses external graph data") {
     std::ostringstream oss;
     graphA.print(oss, "", true, true);
 
-    const std::string expected = expected_graph_print_output(true);
+    const std::string expected = expected_external_graph_print_output();
 
     CHECK(oss.str() == expected);
 
+    //graphA.print(std::cout);
+}
+
+TEST_CASE("external data graph feedback graph data") {
+
+    struct Start {
+        using Manifest = ugraph::Manifest <
+            ugraph::IO<int, 0, 1>
+        >;
+    };
+
+    struct Recursive {
+        using Manifest = ugraph::Manifest <
+            ugraph::IO<int, 2, 1>
+        >;
+    };
+
+
+    Start s;
+    Recursive r;
+
+    auto sNode = ugraph::make_node<100>(s);
+    auto rNode = ugraph::make_node<101>(r);
+
+    int feedback;
+
+    ugraph::Graph graph(
+        sNode.output<int>() >> rNode.input<int, 0>(),
+        rNode.output<int>() | feedback,
+        feedback | rNode.input<int, 1>()
+    );
+
+    std::ostringstream oss;
+    graph.print(oss, "", true, true);
+
+    const std::string expected =
+        "```mermaid\n"
+        "flowchart LR\n"
+        "100(Start 100)\n"
+        "101(Recursive 101)\n"
+        "data_0(( ))\n"
+        "100 -->|int| 101\n"
+        "101 -->|int| data_0\n"
+        "data_0 -->|int| 101\n"
+        "```\n";
+
+    CHECK(oss.str() == expected);
+
+    //graph.print(std::cout);
 }

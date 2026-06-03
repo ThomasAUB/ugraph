@@ -33,6 +33,7 @@
 #include <type_traits>
 
 #include "manifest.hpp"
+#include "node.hpp"
 #include "type_traits/edge_traits.hpp"
 #include "type_traits/type_list.hpp"
 
@@ -41,140 +42,76 @@ namespace ugraph {
     template<typename... edges_t>
     class Topology;
 
-    template<typename graph_t, typename stream_t>
-    void print_graph(stream_t& stream, const std::string_view& inGraphName = "", bool inShowLinkTypes = true, bool inShowVertexIds = false);
+    template<typename T>
+    constexpr std::string_view type_name() {
+        std::string_view s;
+#if defined(__clang__) || defined(__GNUC__)
+        {
+            constexpr std::string_view p = __PRETTY_FUNCTION__;
+            constexpr std::string_view key = "T = ";
+            const auto start = p.find(key);
+            if (start == p.npos) {
+                s = p;
+            }
+            else {
+                s = p.substr(start + key.size());
+                const auto end = s.find_first_of("];,");
+                if (end != s.npos) {
+                    s = s.substr(0, end);
+                }
+            }
+        }
+#elif defined(_MSC_VER)
+        {
+            constexpr std::string_view p = __FUNCSIG__;
+            constexpr std::string_view key = "type_name<";
+            const auto start = p.rfind(key);
+            if (start == p.npos) {
+                s = p;
+            }
+            else {
+                const auto valueStart = start + key.size();
+                const auto valueEnd = p.find(">(void)", valueStart);
+                s = (valueEnd == p.npos) ? p.substr(valueStart) : p.substr(valueStart, valueEnd - valueStart);
+            }
+        }
+#else
+        s = "unknown";
+#endif
 
-    template<typename graph_t, typename stream_t>
-    void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "", bool inShowVertexIds = true);
+        constexpr std::string_view prefixes[] = { "const ", "volatile ", "struct ", "class ", "enum " };
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (auto prefix : prefixes) {
+                if (s.rfind(prefix, 0) == 0) {
+                    s = s.substr(prefix.size());
+                    changed = true;
+                    break;
+                }
+            }
+        }
 
+        while (!s.empty() && s.front() == ' ') {
+            s = s.substr(1);
+        }
 
+        const auto pos = s.rfind("::");
+        return (pos == s.npos) ? s : s.substr(pos + 2);
+    }
 
     namespace {
 
-        // Allow showing an alternative display type (strip wrappers like NodeTag or node types)
         template<typename T, typename = void>
         struct user_type { using type = T; };
 
-        // If a type exposes `module_type`, prefer that as the display type (covers NodeTag and DataNode::NodeType)
         template<typename T>
         struct user_type<T, std::void_t<typename T::module_type>> { using type = typename T::module_type; };
 
-        // Raw printer that returns the compiler-generated type name for T,
-        // then trims common prefixes and namespaces to a bare name.
-        template<typename T>
-        constexpr std::string_view type_name() {
-            std::string_view s;
-#if defined(__clang__)
-            {
-                constexpr std::string_view p = __PRETTY_FUNCTION__;
-                // Find the bracketed template-args section immediately after the function name
-                constexpr std::string_view fn = "type_name()";
-                const auto fnpos = p.find(fn);
-                if (fnpos == p.npos) return p;
-                const auto br_open = p.find('[', fnpos + fn.size());
-                if (br_open == p.npos) return p;
-                const auto br_close = p.find(']', br_open);
-                const auto section = (br_close == p.npos) ? p.substr(br_open + 1) : p.substr(br_open + 1, br_close - br_open - 1);
-                // look for "with T = " or "T = " inside that bracket only
-                constexpr std::string_view keys[] = { "with T = ", "T = " };
-                s = section;
-                for (auto k : keys) {
-                    const auto start = section.find(k);
-                    if (start == section.npos) continue;
-                    const auto spos = start + k.size();
-                    s = (br_close == p.npos) ? section.substr(spos) : section.substr(spos);
-                    // if there are additional characters after the type, trim up to any ',' or ';' (unlikely)
-                    const auto endpos1 = s.find(';');
-                    const auto endpos2 = s.find(',');
-                    std::size_t endpos = s.npos;
-                    if (endpos1 != s.npos) endpos = endpos1;
-                    if (endpos2 != s.npos && (endpos2 < endpos || endpos == s.npos)) endpos = endpos2;
-                    if (endpos != s.npos) s = s.substr(0, endpos);
-                    break;
-                }
-            }
-#elif defined(__GNUC__)
-            {
-                constexpr std::string_view fn = "type_name()";
-                constexpr std::string_view p = __PRETTY_FUNCTION__;
-                const auto fnpos = p.find(fn);
-                if (fnpos == p.npos) return p;
-                const auto br_open = p.find('[', fnpos + fn.size());
-                if (br_open == p.npos) return p;
-                const auto br_close = p.find(']', br_open);
-                const auto section = (br_close == p.npos) ? p.substr(br_open + 1) : p.substr(br_open + 1, br_close - br_open - 1);
-                constexpr std::string_view keys2[] = { "with T = ", "T = " };
-                s = section;
-                for (auto k : keys2) {
-                    const auto start = section.find(k);
-                    if (start == section.npos) continue;
-                    const auto spos = start + k.size();
-                    s = section.substr(spos);
-                    const auto endpos1 = s.find(';');
-                    const auto endpos2 = s.find(',');
-                    std::size_t endpos = s.npos;
-                    if (endpos1 != s.npos) endpos = endpos1;
-                    if (endpos2 != s.npos && (endpos2 < endpos || endpos == s.npos)) endpos = endpos2;
-                    if (endpos != s.npos) s = s.substr(0, endpos);
-                    break;
-                }
-            }
-#elif defined(_MSC_VER)
-            {
-                constexpr std::string_view p = __FUNCSIG__;
-                constexpr std::string_view key = "type_name<";
-                const auto start = p.rfind(key);
-                if (start == p.npos) {
-                    s = p;
-                }
-                else {
-                    const auto st = start + key.size();
-                    // Find the matching closing '>' for the template args, handling nested '<...>'
-                    std::size_t endpos = p.npos;
-                    int nested = 0;
-                    for (std::size_t i = st; i < p.size(); ++i) {
-                        const char c = p[i];
-                        if (c == '<') {
-                            ++nested;
-                        }
-                        else if (c == '>') {
-                            if (nested == 0) { endpos = i; break; }
-                            --nested;
-                        }
-                    }
-                    s = (endpos == p.npos) ? p.substr(st) : p.substr(st, endpos - st);
-                }
-            }
-#else
-            s = "unknown";
-#endif
-            // Strip leading cv-qualifiers like "const "/"volatile "
-            constexpr std::string_view skip_prefixes[] = { "const ", "volatile " };
-            constexpr std::string_view keys[] = { "struct ", "class ", "enum " };
-            bool changed = true;
-            while (changed) {
-                changed = false;
-                for (auto pfx : skip_prefixes) {
-                    if (s.rfind(pfx, 0) == 0) { s = s.substr(pfx.size()); changed = true; break; }
-                }
-                if (changed) continue;
-                for (auto k : keys) {
-                    if (s.rfind(k, 0) == 0) { s = s.substr(k.size()); changed = true; break; }
-                }
-            }
-            // Trim leading spaces
-            while (!s.empty() && s.front() == ' ') s = s.substr(1);
-            // Keep only the last qualifier after '::'
-            const auto pos = s.rfind("::");
-            if (pos != s.npos) return s.substr(pos + 2);
-            return s;
-        }
-
-        // Main entry: print the (possibly unwrapped) display type for T
         template<typename T>
         constexpr std::string_view node_name() {
-            using dt = typename user_type<T>::type;
-            return type_name<dt>();
+            using display_t = typename user_type<T>::type;
+            return type_name<display_t>();
         }
 
         template<typename T, typename = void>
@@ -187,12 +124,30 @@ namespace ugraph {
             using type = detail::type_list<edges_t...>;
         };
 
+        template<typename T, typename = void>
+        struct printer_all_edge_types {
+            using type = typename printer_edge_types<std::decay_t<T>>::type;
+        };
+
+        template<typename T>
+        struct printer_all_edge_types<T, std::void_t<typename std::decay_t<T>::all_edge_types_list>> {
+            using type = typename std::decay_t<T>::all_edge_types_list;
+        };
+
+        template<typename T, typename = void>
+        struct printer_topology {
+            using type = T;
+        };
+
+        template<typename T>
+        struct printer_topology<T, std::void_t<typename T::topology_type>> {
+            using type = typename T::topology_type;
+        };
+
         template<typename edge_t, typename = void>
         struct printer_edge_label {
             static constexpr bool available = false;
-            static constexpr std::string_view value() {
-                return {};
-            }
+            static constexpr std::string_view value() { return {}; }
         };
 
         template<typename edge_t>
@@ -201,9 +156,19 @@ namespace ugraph {
             using data_t = typename detail::io_traits<spec_t>::type;
 
             static constexpr bool available = true;
-            static constexpr std::string_view value() {
-                return type_name<data_t>();
-            }
+            static constexpr std::string_view value() { return type_name<data_t>(); }
+        };
+
+        template<typename edge_t, typename = void>
+        struct printer_binding_label {
+            static constexpr std::string_view value() { return {}; }
+        };
+
+        template<typename edge_t>
+        struct printer_binding_label<edge_t, std::void_t<typename binding_traits<edge_t>::data_type>> {
+            using data_t = typename binding_traits<edge_t>::data_type;
+
+            static constexpr std::string_view value() { return type_name<data_t>(); }
         };
 
         template<typename stream_t>
@@ -223,21 +188,15 @@ namespace ugraph {
             stream << "```\n";
         }
 
-        // If a type provides a topology_type, prefer it; otherwise assume the type itself is a topology-like type.
-        template<typename T, typename = void>
-        struct printer_topology { using type = T; };
-        template<typename T>
-        struct printer_topology<T, std::void_t<typename T::topology_type>> { using type = typename T::topology_type; };
-
         template<typename graph_t, typename stream_t>
         void print_node_names(stream_t& stream, bool inShowVertexIds) {
             using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
             topo_t::for_each(
-                [&] (auto v) {
-                    using vt = decltype(v);
-                    stream << vt::id() << "(" << node_name<vt>();
+                [&] (auto vertex) {
+                    using vertex_t = decltype(vertex);
+                    stream << vertex_t::id() << "(" << node_name<vertex_t>();
                     if (inShowVertexIds) {
-                        stream << " " << vt::id();
+                        stream << " " << vertex_t::id();
                     }
                     stream << ")\n";
                 }
@@ -248,12 +207,11 @@ namespace ugraph {
         void print_graph_edges_impl(stream_t& stream, bool inShowLinkTypes, std::index_sequence<I...>) {
             using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
             using edge_list_t = typename printer_edge_types<std::decay_t<graph_t>>::type;
-            constexpr auto edges_ids = topo_t::edges();
+            constexpr auto edges = topo_t::edges();
 
             (([&] {
                 using edge_t = typename detail::type_list_at<I, edge_list_t>::type;
-                const auto& edge = edges_ids[I];
-
+                const auto& edge = edges[I];
                 stream << edge.first << " -->";
                 if constexpr (printer_edge_label<edge_t>::available) {
                     if (inShowLinkTypes) {
@@ -261,7 +219,7 @@ namespace ugraph {
                     }
                 }
                 stream << " " << edge.second << "\n";
-                }()), ...);
+            }()), ...);
         }
 
         template<typename graph_t, typename stream_t>
@@ -270,41 +228,196 @@ namespace ugraph {
             constexpr std::size_t edge_count = detail::type_list_size<edge_list_t>::value;
             print_graph_edges_impl<graph_t>(stream, inShowLinkTypes, std::make_index_sequence<edge_count>{});
         }
-    }
 
-    template<typename graph_t, typename stream_t>
-    void print_graph(stream_t& stream, const std::string_view& inGraphName, bool inShowLinkTypes, bool inShowVertexIds) {
-        using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
+        template<typename graph_t, std::size_t... I>
+        auto make_binding_ptrs_impl(const graph_t& graph, std::index_sequence<I...>) {
+            using edge_list_t = typename printer_all_edge_types<std::decay_t<graph_t>>::type;
+            return std::array<const void*, sizeof...(I)> {
+                ([](const graph_t& currentGraph) -> const void* {
+                    using edge_t = typename detail::type_list_at<I, edge_list_t>::type;
+                    if constexpr (detail::is_data_binding<edge_t>::value) {
+                        return currentGraph.template binding_ptr<edge_t>();
+                    }
+                    return nullptr;
+                }(graph))...
+            };
+        }
 
-        constexpr auto edges_ids = topo_t::edges();
-        constexpr auto ids = topo_t::ids();
-        print_header(stream, inGraphName);
+        template<typename graph_t>
+        auto make_binding_ptrs(const graph_t& graph) {
+            using edge_list_t = typename printer_all_edge_types<std::decay_t<graph_t>>::type;
+            constexpr std::size_t edge_count = detail::type_list_size<edge_list_t>::value;
+            return make_binding_ptrs_impl(graph, std::make_index_sequence<edge_count>{});
+        }
 
-        print_node_names<graph_t>(stream, inShowVertexIds);
+        template<typename binding_ptrs_t>
+        std::size_t binding_node_index(const binding_ptrs_t& bindingPtrs, std::size_t bindingEdgeIndex) {
+            const void* target = bindingPtrs[bindingEdgeIndex];
+            std::size_t uniqueIndex = 0;
 
-        print_graph_edges<graph_t>(stream, inShowLinkTypes);
+            for (std::size_t i = 0; i < bindingEdgeIndex; ++i) {
+                const void* current = bindingPtrs[i];
+                if (current == nullptr) {
+                    continue;
+                }
 
-        // Print any isolated vertices (not appearing in edges)
-        for (auto vid : ids) {
-            bool found = false;
-            for (const auto& e : edges_ids) {
-                if (e.first == vid || e.second == vid) { found = true; break; }
+                bool seenEarlier = false;
+                for (std::size_t j = 0; j < i; ++j) {
+                    if (bindingPtrs[j] == current) {
+                        seenEarlier = true;
+                        break;
+                    }
+                }
+
+                if (!seenEarlier) {
+                    if (current == target) {
+                        return uniqueIndex;
+                    }
+                    ++uniqueIndex;
+                }
             }
-            if (!found) {
-                stream << vid << "\n";
+
+            return uniqueIndex;
+        }
+
+        template<typename binding_ptrs_t>
+        bool is_first_binding_occurrence(const binding_ptrs_t& bindingPtrs, std::size_t bindingEdgeIndex) {
+            const void* target = bindingPtrs[bindingEdgeIndex];
+            if (target == nullptr) {
+                return false;
+            }
+
+            for (std::size_t i = 0; i < bindingEdgeIndex; ++i) {
+                if (bindingPtrs[i] == target) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        template<typename stream_t, typename binding_ptrs_t>
+        void print_binding_node_id(stream_t& stream, const binding_ptrs_t& bindingPtrs, std::size_t bindingEdgeIndex) {
+            stream << "data_" << binding_node_index(bindingPtrs, bindingEdgeIndex);
+        }
+
+        template<typename graph_t, typename stream_t, typename binding_ptrs_t, std::size_t... I>
+        void print_binding_nodes_impl(stream_t& stream, const binding_ptrs_t& bindingPtrs, std::index_sequence<I...>) {
+            using edge_list_t = typename printer_all_edge_types<std::decay_t<graph_t>>::type;
+
+            (([&] {
+                using edge_t = typename detail::type_list_at<I, edge_list_t>::type;
+                if constexpr (detail::is_data_binding<edge_t>::value) {
+                    if (is_first_binding_occurrence(bindingPtrs, I)) {
+                        print_binding_node_id(stream, bindingPtrs, I);
+                        stream << "(( ))\n";
+                    }
+                }
+            }()), ...);
+        }
+
+        template<typename graph_t, typename stream_t, typename binding_ptrs_t>
+        void print_binding_nodes(stream_t& stream, const binding_ptrs_t& bindingPtrs) {
+            using edge_list_t = typename printer_all_edge_types<std::decay_t<graph_t>>::type;
+            constexpr std::size_t edge_count = detail::type_list_size<edge_list_t>::value;
+            print_binding_nodes_impl<graph_t>(stream, bindingPtrs, std::make_index_sequence<edge_count>{});
+        }
+
+        template<typename edge_t, typename stream_t, typename binding_ptrs_t>
+        void print_binding_edge(stream_t& stream, const binding_ptrs_t& bindingPtrs, std::size_t bindingEdgeIndex, bool inShowLinkTypes) {
+            using port_t = typename binding_traits<edge_t>::port_type;
+            constexpr bool is_output_binding = detail::is_output_port<port_t>::value;
+            constexpr std::size_t node_id = port_t::node_type::id();
+
+            if constexpr (is_output_binding) {
+                stream << node_id << " -->";
+                if (inShowLinkTypes) {
+                    stream << "|" << printer_binding_label<edge_t>::value() << "|";
+                }
+                stream << " ";
+                print_binding_node_id(stream, bindingPtrs, bindingEdgeIndex);
+                stream << "\n";
+            }
+            else {
+                print_binding_node_id(stream, bindingPtrs, bindingEdgeIndex);
+                stream << " -->";
+                if (inShowLinkTypes) {
+                    stream << "|" << printer_binding_label<edge_t>::value() << "|";
+                }
+                stream << " " << node_id << "\n";
             }
         }
 
+        template<typename graph_t, typename stream_t, typename binding_ptrs_t, std::size_t... I>
+        void print_binding_edges_impl(stream_t& stream, const binding_ptrs_t& bindingPtrs, bool inShowLinkTypes, std::index_sequence<I...>) {
+            using edge_list_t = typename printer_all_edge_types<std::decay_t<graph_t>>::type;
+
+            (([&] {
+                using edge_t = typename detail::type_list_at<I, edge_list_t>::type;
+                if constexpr (detail::is_data_binding<edge_t>::value) {
+                    print_binding_edge<edge_t>(stream, bindingPtrs, I, inShowLinkTypes);
+                }
+            }()), ...);
+        }
+
+        template<typename graph_t, typename stream_t, typename binding_ptrs_t>
+        void print_binding_edges(stream_t& stream, const binding_ptrs_t& bindingPtrs, bool inShowLinkTypes) {
+            using edge_list_t = typename printer_all_edge_types<std::decay_t<graph_t>>::type;
+            constexpr std::size_t edge_count = detail::type_list_size<edge_list_t>::value;
+            print_binding_edges_impl<graph_t>(stream, bindingPtrs, inShowLinkTypes, std::make_index_sequence<edge_count>{});
+        }
+
+        template<typename topo_t, typename stream_t>
+        void print_isolated_vertices(stream_t& stream) {
+            constexpr auto edges = topo_t::edges();
+            constexpr auto ids = topo_t::ids();
+
+            for (auto vertexId : ids) {
+                bool found = false;
+                for (const auto& edge : edges) {
+                    if (edge.first == vertexId || edge.second == vertexId) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    stream << vertexId << "\n";
+                }
+            }
+        }
+    }
+
+    template<typename graph_t, typename stream_t>
+    void print_graph(stream_t& stream, const std::string_view& inGraphName = "", bool inShowLinkTypes = true, bool inShowVertexIds = false) {
+        using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
+
+        print_header(stream, inGraphName);
+        print_node_names<graph_t>(stream, inShowVertexIds);
+        print_graph_edges<graph_t>(stream, inShowLinkTypes);
+        print_isolated_vertices<topo_t>(stream);
         print_footer(stream, inGraphName);
     }
 
     template<typename graph_t, typename stream_t>
-    void print_pipeline(stream_t& stream, const std::string_view& inGraphName, bool inShowVertexIds) {
+    void print_graph(const graph_t& graph, stream_t& stream, const std::string_view& inGraphName = "", bool inShowLinkTypes = true, bool inShowVertexIds = false) {
         using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
+        const auto bindingPtrs = make_binding_ptrs(graph);
 
-        constexpr auto ids = topo_t::ids();
         print_header(stream, inGraphName);
+        print_node_names<graph_t>(stream, inShowVertexIds);
+        print_binding_nodes<graph_t>(stream, bindingPtrs);
+        print_graph_edges<graph_t>(stream, inShowLinkTypes);
+        print_binding_edges<graph_t>(stream, bindingPtrs, inShowLinkTypes);
+        print_isolated_vertices<topo_t>(stream);
+        print_footer(stream, inGraphName);
+    }
 
+    template<typename graph_t, typename stream_t>
+    void print_pipeline(stream_t& stream, const std::string_view& inGraphName = "", bool inShowVertexIds = true) {
+        using topo_t = typename printer_topology<std::decay_t<graph_t>>::type;
+        constexpr auto ids = topo_t::ids();
+
+        print_header(stream, inGraphName);
         print_node_names<graph_t>(stream, inShowVertexIds);
 
         for (std::size_t i = 0; i < ids.size(); ++i) {
@@ -313,10 +426,9 @@ namespace ugraph {
                 stream << " --> ";
             }
         }
-
         stream << "\n";
+
         print_footer(stream, inGraphName);
     }
-
 
 } // namespace ugraph
