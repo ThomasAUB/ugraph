@@ -5,6 +5,11 @@
 #include <string>
 #include <iostream>
 
+
+void printOutput(const std::string& inName, const std::string& str) {
+    std::cout << "\n --- \n" << "# " << inName << "\n" << str << std::endl;
+}
+
 struct MyType;
 
 template<typename T>
@@ -57,6 +62,8 @@ TEST_CASE("graph print test") {
         CHECK(out.find("101 --> 103") != std::string::npos);
         CHECK(out.find("102 --> 103") != std::string::npos);
         CHECK(out.find("103 --> 104") != std::string::npos);
+
+        //printOutput("graph test", out);
     }
 
     // test print_pipeline
@@ -73,6 +80,8 @@ TEST_CASE("graph print test") {
         CHECK(out.find("104(Stage 104)") != std::string::npos);
 
         CHECK(out.find("102 --> 101 --> 103 --> 104") != std::string::npos);
+
+        //printOutput("pipeline graph test", out);
     }
 }
 
@@ -104,6 +113,8 @@ TEST_CASE("topology print test") {
         CHECK(out.find("101 --> 103") != std::string::npos);
         CHECK(out.find("102 --> 103") != std::string::npos);
         CHECK(out.find("103 --> 104") != std::string::npos);
+
+        //printOutput("topology test", out);
     }
 
     // test print_pipeline
@@ -114,6 +125,8 @@ TEST_CASE("topology print test") {
 
         CHECK(out.rfind("```mermaid\nflowchart LR\n", 0) == 0);
         CHECK(out.find("102 --> 101 --> 103 --> 104") != std::string::npos);
+
+        //printOutput("topology pipeline test", out);
     }
 }
 
@@ -149,6 +162,8 @@ TEST_CASE("split topology print test") {
         CHECK(out.find("102 --> 103\n") != std::string::npos);
 
         CHECK(out.find("104 --> 105\n") != std::string::npos);
+
+        //printOutput("split topology graph test", out);
     }
 
     // test print_pipeline
@@ -159,6 +174,8 @@ TEST_CASE("split topology print test") {
 
         CHECK(out.rfind("```mermaid\nflowchart LR\n", 0) == 0);
         CHECK(out.find("102 --> 101 --> 103 --> 104 --> 105") != std::string::npos);
+
+        //printOutput("split topology pipeline test", out);
     }
 
 }
