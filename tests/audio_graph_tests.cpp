@@ -7,12 +7,7 @@
 // Audio processing oriented Graph executor tests (sources -> mixer -> gain -> sink + perf).
 namespace {
 
-    struct Parameters {
-        void setFreq(uint16_t inFreq) { mFreq = inFreq; }
-        uint16_t getFreq() const { return mFreq; }
-    private:
-        uint16_t mFreq = 0;
-    };
+    struct ParametersTag {};
 
     // Simple fixed-size audio buffer with helper utilities.
     struct AudioBuffer {
@@ -33,13 +28,13 @@ namespace {
 
         using Manifest = ugraph::Manifest<
             ugraph::IO<AudioBuffer, 0, 1>,
-            ugraph::IO<Parameters, 1, 0, false>
+            ugraph::TaggedIO<ParametersTag, uint16_t, 1, 0, false>
         >;
 
         float value { 0.f };
 
         void process(ugraph::Context<Manifest>& ctx) {
-            auto frequency = ctx.input<Parameters>().getFreq();
+            auto frequency = ctx.input<ParametersTag>();
             process(ctx.output<AudioBuffer>().mData, ctx.output<AudioBuffer>().mSize);
         }
 
@@ -76,7 +71,7 @@ namespace {
     // Scales all samples in-place.
     struct Gain {
 
-        using Manifest = ugraph::Manifest< ugraph::IO<AudioBuffer, 1, 1> >;
+        using Manifest = ugraph::Manifest<ugraph::IO<AudioBuffer, 1, 1>>;
 
         float gain { 1.f };
 
@@ -126,7 +121,7 @@ static auto makeVoiceGraph(
     Mixer2& m,
     Gain& g,
     Sink& s,
-    Parameters(&params)[2]
+    uint16_t(&params)[2]
 ) {
 
     auto vA = ugraph::make_node<0>(s1);
@@ -136,8 +131,8 @@ static auto makeVoiceGraph(
     auto vSink = ugraph::make_node<4>(s);
 
     return ugraph::Graph(
-        params[0] | vA.input<Parameters>(),
-        params[1] | vB.input<Parameters>(),
+        params[0] | vA.input<ParametersTag>(),
+        params[1] | vB.input<ParametersTag>(),
         vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(),
         vB.output<AudioBuffer>() >> vMix.input<AudioBuffer, 1>(),
         vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(),
@@ -152,7 +147,7 @@ using voice_graph_t = decltype(
         std::declval<Mixer2&>(),
         std::declval<Gain&>(),
         std::declval<Sink&>(),
-        std::declval<Parameters(&)[2]>()
+        std::declval<uint16_t(&)[2]>()
     )
     );
 
@@ -165,8 +160,8 @@ struct Voice {
         mGraph(makeVoiceGraph(sa, sb, mix, gain, sink, mParams)) {}
 
     void setFreq(uint16_t inFreq) {
-        mParams[0].setFreq(inFreq);
-        mParams[1].setFreq(inFreq);
+        mParams[0] = inFreq;
+        mParams[1] = inFreq;
     }
 
     void process() {
@@ -193,7 +188,7 @@ private:
     Gain          gain { 0.5f };
     Sink          sink {};
 
-    Parameters mParams[2];
+    uint16_t mParams[2];
 
     voice_graph_t mGraph;
 };
@@ -230,11 +225,11 @@ TEST_CASE("audio graph simple chain correctness") {
     auto vMix = ugraph::make_node<3003>(mix);
     auto vGain = ugraph::make_node<3004>(gain);
     auto vSink = ugraph::make_node<3005>(sink);
-    Parameters params[2];
+    uint16_t params[2] {};
 
     auto g = ugraph::Graph(
-        params[0] | vA.input<Parameters>(),
-        params[1] | vB.input<Parameters>(),
+        params[0] | vA.input<ParametersTag>(),
+        params[1] | vB.input<ParametersTag>(),
         vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(),
         vB.output<AudioBuffer>() >> vMix.input<AudioBuffer, 1>(),
         vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(),
@@ -276,11 +271,11 @@ TEST_CASE("audio graph repeated processing") {
     auto vMix = ugraph::make_node<4003>(mix);
     auto vGain = ugraph::make_node<4004>(gain);
     auto vSink = ugraph::make_node<4005>(sink);
-    Parameters params[2];
+    uint16_t params[2] {};
 
     auto g = ugraph::Graph(
-        params[0] | vA.input<Parameters>(),
-        params[1] | vB.input<Parameters>(),
+        params[0] | vA.input<ParametersTag>(),
+        params[1] | vB.input<ParametersTag>(),
         vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(),
         vB.output<AudioBuffer>() >> vMix.input<AudioBuffer, 1>(),
         vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(),
@@ -326,11 +321,11 @@ TEST_CASE("audio graph pipeline vs manual performance ratio") {
     auto vMix = ugraph::make_node<5003>(mix);
     auto vGain = ugraph::make_node<5004>(gain);
     auto vSink = ugraph::make_node<5005>(sinkPipe);
-    Parameters params[2];
+    uint16_t params[2] {};
 
     auto g = ugraph::Graph(
-        params[0] | vA.input<Parameters>(),
-        params[1] | vB.input<Parameters>(),
+        params[0] | vA.input<ParametersTag>(),
+        params[1] | vB.input<ParametersTag>(),
         vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(),
         vB.output<AudioBuffer>() >> vMix.input<AudioBuffer, 1>(),
         vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(),
