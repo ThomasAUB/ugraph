@@ -98,3 +98,90 @@ TEST_CASE("TaggedIO can bind directly to plain values") {
 
     CHECK(consumer.value == 33);
 }
+
+TEST_CASE("Graph routes distinct tags that share the same value type") {
+
+    struct LeftTag {};
+    struct RightTag {};
+
+    struct Producer {
+        using Manifest = ugraph::Manifest<
+            ugraph::TaggedIO<LeftTag, int, 0, 1>,
+            ugraph::TaggedIO<RightTag, int, 0, 1>
+        >;
+
+        void process(ugraph::Context<Manifest>& ctx) {
+            ctx.output<LeftTag>() = 7;
+            ctx.output<RightTag>() = 13;
+        }
+    };
+
+    struct Consumer {
+        using Manifest = ugraph::Manifest<
+            ugraph::TaggedIO<LeftTag, int, 1, 0>,
+            ugraph::TaggedIO<RightTag, int, 1, 0>
+        >;
+
+        int left = -1;
+        int right = -1;
+
+        void process(ugraph::Context<Manifest>& ctx) {
+            left = ctx.input<LeftTag>();
+            right = ctx.input<RightTag>();
+        }
+    };
+
+    Producer producer;
+    Consumer consumer;
+
+    auto source = ugraph::make_node<30>(producer);
+    auto sink = ugraph::make_node<31>(consumer);
+
+    ugraph::Graph g(
+        source.output<LeftTag>() >> sink.input<LeftTag>(),
+        source.output<RightTag>() >> sink.input<RightTag>()
+    );
+
+    g.for_each([] (auto& n, auto& ctx) { n.process(ctx); });
+
+    CHECK(consumer.left == 7);
+    CHECK(consumer.right == 13);
+}
+
+TEST_CASE("Graph connects one tag to a different tag of the same value type") {
+
+    struct SourceTag {};
+    struct DestinationTag {};
+
+    struct Producer {
+        using Manifest = ugraph::Manifest<ugraph::TaggedIO<SourceTag, int, 0, 1>>;
+
+        void process(ugraph::Context<Manifest>& ctx) {
+            ctx.output<SourceTag>() = 55;
+        }
+    };
+
+    struct Consumer {
+        using Manifest = ugraph::Manifest<ugraph::TaggedIO<DestinationTag, int, 1, 0>>;
+
+        int value = -1;
+
+        void process(ugraph::Context<Manifest>& ctx) {
+            value = ctx.input<DestinationTag>();
+        }
+    };
+
+    Producer producer;
+    Consumer consumer;
+
+    auto source = ugraph::make_node<40>(producer);
+    auto sink = ugraph::make_node<41>(consumer);
+
+    ugraph::Graph g(
+        source.output<SourceTag>() >> sink.input<DestinationTag>()
+    );
+
+    g.for_each([] (auto& n, auto& ctx) { n.process(ctx); });
+
+    CHECK(consumer.value == 55);
+}

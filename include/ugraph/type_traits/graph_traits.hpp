@@ -43,19 +43,14 @@ namespace ugraph::detail {
         static_assert(
             std::is_same_v<typename src_traits::type, typename dst_traits::type>,
             "Connected ports must use the same value type"
-        );
+            );
 
         static constexpr bool use_value_key = !src_traits::is_tagged || !dst_traits::is_tagged;
-
-        static_assert(
-            use_value_key || std::is_same_v<typename src_traits::tag, typename dst_traits::tag>,
-            "Tagged ports can only connect to the same tag or to an untagged port of the same value type"
-        );
 
         using type = std::conditional_t<
             use_value_key,
             typename src_traits::type,
-            typename io_key<src_spec_t>::type
+            typename src_traits::tag
         >;
     };
 
@@ -285,6 +280,26 @@ namespace ugraph::detail {
             return has_output_edge_impl<T, VID, PORT, edge_types_list>::value;
         }
 
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename EdgeList>
+        struct input_edge_key_impl;
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT>
+        struct input_edge_key_impl<spec_t, VID, PORT, detail::type_list<>> {
+            using type = void;
+        };
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename E0, typename... Rest>
+        struct input_edge_key_impl<spec_t, VID, PORT, detail::type_list<E0, Rest...>> {
+            using tr = detail::edge_traits<E0>;
+            using type = std::conditional_t<
+                (tr::dst_id == VID) &&
+                (tr::dst_port_index == PORT) &&
+                std::is_same_v<typename tr::dst_port_t::spec_type, spec_t>,
+                typename detail::edge_key_type<E0>::type,
+                typename input_edge_key_impl<spec_t, VID, PORT, detail::type_list<Rest...>>::type
+            >;
+        };
+
         template<typename T, std::size_t NodeIndex, std::size_t PortIndex>
         static constexpr std::size_t input_index_for() {
             constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
@@ -309,20 +324,12 @@ namespace ugraph::detail {
 
         template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
         static constexpr std::size_t input_index_for_spec() {
-            using tag_key_t = typename io_key<spec_t>::type;
-            constexpr std::size_t tagged_index = input_index_for<tag_key_t, NodeIndex, PortIndex>();
-
-            if constexpr (io_traits<spec_t>::is_tagged) {
-                using value_key_t = typename io_traits<spec_t>::type;
-                constexpr std::size_t value_index = input_index_for<value_key_t, NodeIndex, PortIndex>();
-                static_assert(
-                    !(tagged_index != invalid_index && value_index != invalid_index),
-                    "Tagged input port cannot be connected through both tag and value keys"
-                );
-                return tagged_index != invalid_index ? tagged_index : value_index;
+            using key_t = typename input_key_for_spec<spec_t, NodeIndex, PortIndex>::type;
+            if constexpr (std::is_same_v<key_t, void>) {
+                return invalid_index;
             }
             else {
-                return tagged_index;
+                return input_index_for<key_t, NodeIndex, PortIndex>();
             }
         }
 
@@ -337,7 +344,7 @@ namespace ugraph::detail {
                 static_assert(
                     !(tagged_index != invalid_index && value_index != invalid_index),
                     "Tagged output port cannot be connected through both tag and value keys"
-                );
+                    );
                 return tagged_index != invalid_index ? tagged_index : value_index;
             }
             else {
@@ -347,12 +354,8 @@ namespace ugraph::detail {
 
         template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
         struct input_key_for_spec {
-            using tag_key_t = typename io_key<spec_t>::type;
-            using type = std::conditional_t<
-                input_index_for<tag_key_t, NodeIndex, PortIndex>() != invalid_index,
-                tag_key_t,
-                typename io_traits<spec_t>::type
-            >;
+            static constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
+            using type = typename input_edge_key_impl<spec_t, vid, PortIndex, edge_types_list>::type;
         };
 
         template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
