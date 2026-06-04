@@ -147,11 +147,25 @@ namespace ugraph {
         }
 
         template<std::size_t I, typename key_t>
+        constexpr value_for_t<key_t>* input_ptr() const {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(I < input_count<key_t>(), "Invalid input index");
+            return slot_ptrs<key_t>()[I];
+        }
+
+        template<std::size_t I, typename key_t>
         constexpr void set_output_ptr(value_for_t<key_t>* ptr) {
             static_assert(contains<key_t>(), "Type not declared in Manifest");
             static_assert(I < output_count<key_t>(), "Invalid output index");
             auto& data = slot_ptrs<key_t>();
             data[input_count<key_t>() + I] = ptr;
+        }
+
+        template<std::size_t I, typename key_t>
+        constexpr value_for_t<key_t>* output_ptr() const {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(I < output_count<key_t>(), "Invalid output index");
+            return slot_ptrs<key_t>()[input_count<key_t>() + I];
         }
 
     private:

@@ -108,6 +108,7 @@ namespace ugraph {
         using Manifest = manifest_t;
         using vertex_types_list = typename topology_t::vertex_types_list;
         using edge_types_list = typename traits::edge_types_list;
+        using all_edge_types_list = detail::type_list<edges_t...>;
 
         class graph_data_t {
             using storage_t = decltype(make_graph_data_storage_t(std::make_index_sequence<traits::key_count>{}));
@@ -180,9 +181,29 @@ namespace ugraph {
             init_graph_data(graphData);
         }
 
+        template<typename edge_t>
+        constexpr const void* binding_ptr() const {
+            static_assert(detail::is_data_binding<edge_t>::value, "edge_t must be a data binding");
+
+            using port_t = typename binding_traits<edge_t>::port_type;
+            using spec_t = typename port_t::spec_type;
+            constexpr std::size_t node_id = port_t::node_type::id();
+            constexpr std::size_t port_index = port_t::index();
+            constexpr std::size_t node_index = topology_t::template index_of<node_id>();
+            static_assert(node_index != topology_t::invalid_index, "Invalid node id");
+
+            const auto& ctx = std::get<node_index>(mContexts);
+            if constexpr (detail::is_output_port<port_t>::value) {
+                return static_cast<const void*>(ctx.template output_ptr<port_index, spec_t>());
+            }
+            else {
+                return static_cast<const void*>(ctx.template input_ptr<port_index, spec_t>());
+            }
+        }
+
         template<typename stream_t>
         void print(stream_t& stream, const std::string_view& inGraphName = "", bool inShowLinkTypes = true, bool inShowVertexIds = false) const {
-            ugraph::print_graph<std::decay_t<decltype(*this)>>(stream, inGraphName, inShowLinkTypes, inShowVertexIds);
+            ugraph::print_graph(*this, stream, inGraphName, inShowLinkTypes, inShowVertexIds);
         }
 
     private:
@@ -408,6 +429,7 @@ namespace ugraph {
         using typename base_t::Manifest;
         using typename base_t::vertex_types_list;
         using typename base_t::edge_types_list;
+        using typename base_t::all_edge_types_list;
         using typename base_t::graph_data_t;
 
         constexpr Graph(const edges_t&... es) :
