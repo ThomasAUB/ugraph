@@ -69,6 +69,35 @@ struct Sink {
 
 };
 
+namespace {
+
+    std::string expected_graph_print_output(bool showVertexIds) {
+        std::ostringstream oss;
+        oss << "```mermaid\n";
+        oss << "flowchart LR\n";
+
+        if (showVertexIds) {
+            oss << "100(Source 100)\n";
+            oss << "101(Module1 101)\n";
+            oss << "102(Sink 102)\n";
+        }
+        else {
+            oss << "100(Source)\n";
+            oss << "101(Module1)\n";
+            oss << "102(Sink)\n";
+        }
+
+        oss << "100 -->|int| 101\n";
+        oss << "101 -->|int| 102\n";
+        oss << "100 -->|int| 102\n";
+        oss << "100 -->|" << ugraph::type_name<MyEvent>() << "| 102\n";
+        oss << "```\n";
+
+        return oss.str();
+    }
+
+}
+
 TEST_CASE("graph data propagation") {
 
     Source src;
@@ -135,17 +164,7 @@ TEST_CASE("graph print output") {
     std::ostringstream oss;
     graph.print(oss);
 
-    const std::string expected =
-        "```mermaid\n"
-        "flowchart LR\n"
-        "100(Source)\n"
-        "101(Module1)\n"
-        "102(Sink)\n"
-        "100 -->|int| 101\n"
-        "101 -->|int| 102\n"
-        "100 -->|int| 102\n"
-        "100 -->|vector<int>| 102\n"
-        "```\n";
+    const std::string expected = expected_graph_print_output(false);
 
     CHECK(oss.str() == expected);
 }
@@ -170,17 +189,7 @@ TEST_CASE("graph print output with edge types") {
     std::ostringstream oss;
     graph.print(oss, "", true);
 
-    const std::string expected =
-        "```mermaid\n"
-        "flowchart LR\n"
-        "100(Source)\n"
-        "101(Module1)\n"
-        "102(Sink)\n"
-        "100 -->|int| 101\n"
-        "101 -->|int| 102\n"
-        "100 -->|int| 102\n"
-        "100 -->|vector<int>| 102\n"
-        "```\n";
+    const std::string expected = expected_graph_print_output(false);
 
     CHECK(oss.str() == expected);
 }
@@ -205,17 +214,7 @@ TEST_CASE("graph print output without vertex ids") {
     std::ostringstream oss;
     graph.print(oss, "", true, false);
 
-    const std::string expected =
-        "```mermaid\n"
-        "flowchart LR\n"
-        "100(Source)\n"
-        "101(Module1)\n"
-        "102(Sink)\n"
-        "100 -->|int| 101\n"
-        "101 -->|int| 102\n"
-        "100 -->|int| 102\n"
-        "100 -->|vector<int>| 102\n"
-        "```\n";
+    const std::string expected = expected_graph_print_output(false);
 
     CHECK(oss.str() == expected);
 }
@@ -240,17 +239,7 @@ TEST_CASE("graph print output with explicit vertex ids") {
     std::ostringstream oss;
     graph.print(oss, "", true, true);
 
-    const std::string expected =
-        "```mermaid\n"
-        "flowchart LR\n"
-        "100(Source 100)\n"
-        "101(Module1 101)\n"
-        "102(Sink 102)\n"
-        "100 -->|int| 101\n"
-        "101 -->|int| 102\n"
-        "100 -->|int| 102\n"
-        "100 -->|vector<int>| 102\n"
-        "```\n";
+    const std::string expected = expected_graph_print_output(true);
 
     CHECK(oss.str() == expected);
 }
@@ -326,17 +315,7 @@ TEST_CASE("external data graph reuses external graph data") {
     std::ostringstream oss;
     graphA.print(oss, "", true, true);
 
-    const std::string expected =
-        "```mermaid\n"
-        "flowchart LR\n"
-        "100(Source 100)\n"
-        "101(Module1 101)\n"
-        "102(Sink 102)\n"
-        "100 -->|int| 101\n"
-        "101 -->|int| 102\n"
-        "100 -->|int| 102\n"
-        "100 -->|vector<int>| 102\n"
-        "```\n";
+    const std::string expected = expected_graph_print_output(true);
 
     CHECK(oss.str() == expected);
 
