@@ -1,5 +1,6 @@
 #include "doctest.h"
 #include "ugraph.hpp"
+#include <iostream>
 
 TEST_CASE("Graph routes data using TaggedIO tags") {
 
@@ -184,4 +185,6 @@ TEST_CASE("Graph connects one tag to a different tag of the same value type") {
     g.for_each([] (auto& n, auto& ctx) { n.process(ctx); });
 
     CHECK(consumer.value == 55);
+
+    g.print(std::cout);
 }

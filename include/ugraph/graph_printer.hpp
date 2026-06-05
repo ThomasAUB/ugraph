@@ -114,6 +114,15 @@ namespace ugraph {
             return type_name<display_t>();
         }
 
+        template<typename vertex_t, typename stream_t>
+        void print_node_label(stream_t& stream, bool inShowVertexIds) {
+            stream << vertex_t::id() << "(\"" << node_name<vertex_t>();
+            if (inShowVertexIds) {
+                stream << " " << vertex_t::id();
+            }
+            stream << "\")\n";
+        }
+
         template<typename T, typename = void>
         struct printer_edge_types {
             using type = typename std::decay_t<T>::edge_types_list;
@@ -153,10 +162,10 @@ namespace ugraph {
         template<typename edge_t>
         struct printer_edge_label<edge_t, std::void_t<typename detail::edge_traits<edge_t>::src_port_t::spec_type>> {
             using spec_t = typename detail::edge_traits<edge_t>::src_port_t::spec_type;
-            using data_t = typename detail::io_traits<spec_t>::type;
+            using label_t = std::conditional_t<detail::io_traits<spec_t>::is_tagged, typename detail::io_traits<spec_t>::tag, typename detail::io_traits<spec_t>::type>;
 
             static constexpr bool available = true;
-            static constexpr std::string_view value() { return type_name<data_t>(); }
+            static constexpr std::string_view value() { return type_name<label_t>(); }
         };
 
         template<typename edge_t, typename = void>
@@ -168,7 +177,18 @@ namespace ugraph {
         struct printer_binding_label<edge_t, std::void_t<typename binding_traits<edge_t>::data_type>> {
             using data_t = typename binding_traits<edge_t>::data_type;
 
-            static constexpr std::string_view value() { return type_name<data_t>(); }
+            template<typename port_t, typename = void>
+            struct label_type { using type = data_t; };
+
+            template<typename port_t>
+            struct label_type<port_t, std::void_t<typename port_t::spec_type>> {
+                using spec_t = typename port_t::spec_type;
+                using type = std::conditional_t<detail::io_traits<spec_t>::is_tagged, typename detail::io_traits<spec_t>::tag, typename detail::io_traits<spec_t>::type>;
+            };
+
+            using label_t = typename label_type<typename binding_traits<edge_t>::port_type>::type;
+
+            static constexpr std::string_view value() { return type_name<label_t>(); }
         };
 
         template<typename stream_t>
@@ -194,11 +214,7 @@ namespace ugraph {
             topo_t::for_each(
                 [&] (auto vertex) {
                     using vertex_t = decltype(vertex);
-                    stream << vertex_t::id() << "(" << node_name<vertex_t>();
-                    if (inShowVertexIds) {
-                        stream << " " << vertex_t::id();
-                    }
-                    stream << ")\n";
+                    print_node_label<vertex_t>(stream, inShowVertexIds);
                 }
             );
         }
