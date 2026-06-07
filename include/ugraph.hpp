@@ -28,6 +28,7 @@
 #pragma once
 
 #include "ugraph/node.hpp"
+#include "ugraph/dsl.hpp"
 #include "ugraph/graph.hpp"
 #include "ugraph/topology.hpp"
 #include "ugraph/manifest.hpp"

@@ -27,25 +27,40 @@
 
 #pragma once
 
-#include <cstddef>
+#include <type_traits>
+#include <utility>
 
-namespace ugraph::detail {
+#include "node.hpp"
 
-    template<typename E, typename = void>
-    struct edge_traits;
+namespace ugraph {
 
-    template<typename E>
-    struct edge_traits<E, std::void_t<typename std::decay_t<E>::first_type, typename std::decay_t<E>::second_type>> {
-        using edge_t = std::decay_t<E>;
-        using src_port_t = typename edge_t::first_type;
-        using dst_port_t = typename edge_t::second_type;
-        using src_vertex_t = typename src_port_t::node_type;
-        using dst_vertex_t = typename dst_port_t::node_type;
-        static constexpr std::size_t src_id = src_vertex_t::id();
-        static constexpr std::size_t dst_id = dst_vertex_t::id();
-        static constexpr std::size_t src_port_index = src_port_t::index();
-        static constexpr std::size_t dst_port_index = dst_port_t::index();
-    };
+    template<
+        typename out_port_t,
+        typename in_port_t,
+        typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type, typename in_port_t::node_type>
+    >
+    constexpr std::pair<out_port_t, in_port_t> operator>>(const out_port_t& out, const in_port_t& in) {
+        return std::pair<out_port_t, in_port_t>{ out, in };
+    }
+
+    template<
+        typename data_t,
+        typename in_port_t,
+        typename = std::void_t<typename in_port_t::node_type>,
+        typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
+    >
+    constexpr InDataBind<data_t, in_port_t> operator|(data_t& data, const in_port_t& in) {
+        return InDataBind<data_t, in_port_t>{ &data, in };
+    }
+
+    template<
+        typename out_port_t,
+        typename data_t,
+        typename = std::void_t<typename out_port_t::data_type, typename out_port_t::node_type>,
+        typename = std::enable_if_t<!detail::is_a_port<data_t>::value, int>
+    >
+    constexpr OutDataBind<data_t, out_port_t> operator|(const out_port_t& out, data_t& data) {
+        return OutDataBind<data_t, out_port_t>{ &data, out };
+    }
 
 } // namespace ugraph
-

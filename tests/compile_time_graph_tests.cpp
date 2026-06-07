@@ -44,10 +44,6 @@ static constexpr auto runGraph(int v) {
 
     auto g = getGraph(t1, t2);
 
-    decltype(g)::graph_data_t gd;
-
-    g.init_graph_data(gd);
-
     g.for_each(
         [] (auto& m, auto& ctx) {
             m(ctx);
@@ -58,6 +54,7 @@ static constexpr auto runGraph(int v) {
 }
 
 
-TEST_CASE("compile-time graph constexpr construction") {
-    static_assert(runGraph(16) == 32, "iofg");
+TEST_CASE("compile-time graph construction") {
+    static_assert(runGraph(16) == 32, "Compile-time run failed");
+    CHECK(runGraph(16) == 32);
 }

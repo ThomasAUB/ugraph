@@ -29,8 +29,36 @@
 
 #include <cstddef>
 #include <utility>
+#include "type_traits/port_traits.hpp"
 
 namespace ugraph {
+
+    template<typename data_t, typename input_t>
+    struct InDataBind {
+        data_t* mPtr;
+        input_t mPort;
+    };
+
+    template<typename data_t, typename output_t>
+    struct OutDataBind {
+        data_t* mPtr;
+        output_t mPort;
+    };
+
+    template<typename Bind>
+    struct binding_traits;
+
+    template<typename data_t, typename in_port_t>
+    struct binding_traits<InDataBind<data_t, in_port_t>> {
+        using data_type = data_t;
+        using port_type = in_port_t;
+    };
+
+    template<typename data_t, typename out_port_t>
+    struct binding_traits<OutDataBind<data_t, out_port_t>> {
+        using data_type = data_t;
+        using port_type = out_port_t;
+    };
 
     template<
         std::size_t id,
@@ -45,17 +73,20 @@ namespace ugraph {
         typename _module_t,
         std::size_t _input_count,
         std::size_t _output_count,
-        std::size_t _priority = 0
+        std::size_t _priority = 0,
+        typename _spec_t = void
     >
     struct NodePortTag {
         static constexpr std::size_t id() { return _id; }
         static constexpr std::size_t priority() { return _priority; }
         static constexpr std::size_t input_count() { return _input_count; }
         static constexpr std::size_t output_count() { return _output_count; }
+        using spec_type = _spec_t;
 
         template<std::size_t idx>
         struct Port {
-            using node_type = NodePortTag<_id, _module_t, _input_count, _output_count, _priority>;
+            using node_type = NodePortTag<_id, _module_t, _input_count, _output_count, _priority, _spec_t>;
+            using spec_type = typename node_type::spec_type;
             static constexpr std::size_t index() { return idx; }
             constexpr Port(_module_t& module) : mModule(&module) {}
             constexpr _module_t& module() const { return *mModule; }
@@ -84,15 +115,22 @@ namespace ugraph {
             module_type,
             manifest_t::template input_count<T>(),
             manifest_t::template output_count<T>(),
-            _priority
+            _priority,
+            typename manifest_t::template spec_for<T>
         >;
 
         template<typename T, std::size_t _index>
-        using InputPort = typename NodeType<T>::template Port<_index>;
+        struct InputPort : NodeType<T>::template Port<_index> {
+            using spec_type = typename manifest_t::template spec_for<T>;
+
+            constexpr InputPort(Node& node) :
+                NodeType<T>::template Port<_index>(node.module()) {}
+        };
 
         template<typename T, std::size_t _index>
         struct OutputPort : NodeType<T>::template Port<_index> {
-            using data_type = T;
+            using data_type = typename manifest_t::template data_type_for<T>;
+            using spec_type = typename manifest_t::template spec_for<T>;
             constexpr OutputPort(Node& node) :
                 NodeType<T>::template Port<_index>(node.module()) {}
         };
@@ -137,7 +175,7 @@ namespace ugraph {
                 else {
                     static_assert(manifest_t::template input_count<T>() > I, "Invalid input index");
                 }
-                return input_port_t { mModule };
+                return input_port_t { *this };
             }
         }
 
@@ -154,13 +192,16 @@ namespace ugraph {
         return Node<id, module_t, manifest_t, _priority>(module);
     }
 
-    template<
-        typename out_port_t,
-        typename in_port_t,
-        typename = std::void_t<typename out_port_t::data_type, typename in_port_t::node_type>
-    >
-    constexpr auto operator >> (const out_port_t& out, const in_port_t& in) {
-        return std::pair<out_port_t, in_port_t>{ out, in };
-    }
+} // namespace ugraph
+
+namespace ugraph::detail {
+    template<typename T>
+    struct is_data_binding : std::false_type {};
+
+    template<typename data_t, typename in_port_t>
+    struct is_data_binding<InDataBind<data_t, in_port_t>> : std::true_type {};
+
+    template<typename data_t, typename out_port_t>
+    struct is_data_binding<OutDataBind<data_t, out_port_t>> : std::true_type {};
 
 } // namespace ugraph

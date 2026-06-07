@@ -4,12 +4,31 @@
 #include <tuple>
 #include <type_traits>
 
+#include "manifest.hpp"
+
 namespace ugraph {
 
     template<typename T> struct DataSpan;
 
     template<typename manifest_t>
     struct Context {
+
+        template<typename key_t>
+        using spec_for_t = typename manifest_t::template spec_for<key_t>;
+
+        template<typename key_t>
+        using value_for_t = typename manifest_t::template data_type_for<key_t>;
+
+        template<typename spec_t>
+        using data_array_for_spec_t = std::array<
+            typename detail::io_traits<spec_t>::type*,
+            detail::io_traits<spec_t>::input_count + detail::io_traits<spec_t>::output_count
+        >;
+
+        template<typename spec_t>
+        struct data_ptr_slot {
+            data_array_for_spec_t<spec_t> ptrs {};
+        };
 
         constexpr Context() = default;
 
@@ -28,129 +47,150 @@ namespace ugraph {
             return manifest_t::template output_count<data_t>();
         }
 
-        template<typename data_t>
-        using data_array_t = std::array<data_t*, input_count<data_t>() + output_count<data_t>()>;
+        template<typename key_t>
+        using data_array_t = data_array_for_spec_t<spec_for_t<key_t>>;
 
-        template<typename data_t>
-        constexpr inline const data_t& input() const {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            static_assert(input_count<data_t>() == 1, "This overload is only valid for single-input types");
-            return *std::get<data_array_t<data_t>>(mDataPtrsTuple)[0];
+        template<typename key_t>
+        constexpr inline const value_for_t<key_t>& input() const {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(input_count<key_t>() == 1, "This overload is only valid for single-input types");
+            return *slot_ptrs<key_t>()[0];
         }
 
-        template<typename data_t>
-        constexpr inline data_t& output() {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            static_assert(output_count<data_t>() == 1, "This overload is only valid for single-output types");
-            return *std::get<data_array_t<data_t>>(mDataPtrsTuple)[input_count<data_t>()];
+        template<typename key_t>
+        constexpr inline value_for_t<key_t>& output() {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(output_count<key_t>() == 1, "This overload is only valid for single-output types");
+            return *slot_ptrs<key_t>()[input_count<key_t>()];
         }
 
-        template<typename data_t>
-        constexpr inline const data_t& input(std::size_t port) const {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            return *std::get<data_array_t<data_t>>(mDataPtrsTuple)[port];
+        template<typename key_t>
+        constexpr inline const value_for_t<key_t>& input(std::size_t port) const {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            return *slot_ptrs<key_t>()[port];
         }
 
-        template<typename data_t>
-        constexpr inline data_t& output(std::size_t port) {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            return *std::get<data_array_t<data_t>>(mDataPtrsTuple)[input_count<data_t>() + port];
+        template<typename key_t>
+        constexpr inline value_for_t<key_t>& output(std::size_t port) {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            return *slot_ptrs<key_t>()[input_count<key_t>() + port];
         }
 
-        template<typename data_t>
+        template<typename key_t>
         constexpr inline auto inputs() const {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            static_assert(input_count<data_t>() > 0, "No input ports for this type");
-            return DataSpan<const data_t>(std::get<data_array_t<data_t>>(mDataPtrsTuple).data(), input_count<data_t>());
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(input_count<key_t>() > 0, "No input ports for this type");
+            return DataSpan<const value_for_t<key_t>>(slot_ptrs<key_t>().data(), input_count<key_t>());
         }
 
-        template<typename data_t>
+        template<typename key_t>
         constexpr inline auto outputs() {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            static_assert(output_count<data_t>() > 0, "No output ports for this type");
-            return DataSpan<data_t>(std::get<data_array_t<data_t>>(mDataPtrsTuple).data() + input_count<data_t>(), output_count<data_t>());
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(output_count<key_t>() > 0, "No output ports for this type");
+            return DataSpan<value_for_t<key_t>>(slot_ptrs<key_t>().data() + input_count<key_t>(), output_count<key_t>());
         }
 
-        template<typename data_t>
+        template<typename key_t>
         constexpr inline auto inputs_ptr() const {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            static_assert(input_count<data_t>() > 0, "No input ports for this type");
-            return std::get<data_array_t<data_t>>(mDataPtrsTuple).data();
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(input_count<key_t>() > 0, "No input ports for this type");
+            return slot_ptrs<key_t>().data();
         }
 
-        template<typename data_t>
+        template<typename key_t>
         constexpr inline auto outputs_ptr() {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            static_assert(output_count<data_t>() > 0, "No output ports for this type");
-            return std::get<data_array_t<data_t>>(mDataPtrsTuple).data() + input_count<data_t>();
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(output_count<key_t>() > 0, "No output ports for this type");
+            return slot_ptrs<key_t>().data() + input_count<key_t>();
         }
 
-        template<typename data_t, std::size_t I = 0>
+        template<typename key_t, std::size_t I = 0>
         constexpr inline bool has_input() const {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            if constexpr (I >= input_count<data_t>()) {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            if constexpr (I >= input_count<key_t>()) {
                 return false;
             }
             else {
-                return std::get<data_array_t<data_t>>(mDataPtrsTuple)[I] != nullptr;
+                return slot_ptrs<key_t>()[I] != nullptr;
             }
         }
 
-        template<typename data_t, std::size_t I = 0>
+        template<typename key_t, std::size_t I = 0>
         constexpr inline bool has_output() const {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            if constexpr (I >= output_count<data_t>()) {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            if constexpr (I >= output_count<key_t>()) {
                 return false;
             }
             else {
-                return std::get<data_array_t<data_t>>(mDataPtrsTuple)[input_count<data_t>() + I] != nullptr;
+                return slot_ptrs<key_t>()[input_count<key_t>() + I] != nullptr;
             }
         }
 
-        template<typename data_t>
-        constexpr void set_ios(const data_array_t<data_t>& inData) {
-            std::get<std::decay_t<decltype(inData)>>(mDataPtrsTuple) = inData;
+        template<typename key_t>
+        constexpr void set_ios(const data_array_t<key_t>& inData) {
+            slot_ptrs<key_t>() = inData;
         }
 
-        template<std::size_t I, typename data_t>
-        constexpr void set_input_ptr(data_t* ptr) {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            static_assert(I < input_count<data_t>(), "Invalid input index");
-            auto& data = std::get<data_array_t<data_t>>(mDataPtrsTuple);
+        template<typename data_t, std::size_t N>
+        constexpr void set_ios(const std::array<data_t*, N>& inData) {
+            static_assert(manifest_t::template spec_count_for_value<data_t> == 1, "set_ios(data array) requires exactly one untagged spec for this type");
+            static_assert(N == input_count<data_t>() + output_count<data_t>(), "Invalid IO array size for this type");
+            slot_ptrs<data_t>() = inData;
+        }
+
+        template<std::size_t I, typename key_t>
+        constexpr void set_input_ptr(value_for_t<key_t>* ptr) {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(I < input_count<key_t>(), "Invalid input index");
+            auto& data = slot_ptrs<key_t>();
             data[I] = ptr;
         }
 
-        template<std::size_t I, typename data_t >
-        constexpr void set_output_ptr(data_t* ptr) {
-            static_assert(contains<data_t>(), "Type not declared in Manifest");
-            static_assert(I < output_count<data_t>(), "Invalid output index");
-            auto& data = std::get<data_array_t<data_t>>(mDataPtrsTuple);
-            data[input_count<data_t>() + I] = ptr;
+        template<std::size_t I, typename key_t>
+        constexpr value_for_t<key_t>* input_ptr() const {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(I < input_count<key_t>(), "Invalid input index");
+            return slot_ptrs<key_t>()[I];
         }
 
-        constexpr bool all_ios_connected() const {
-            return std::apply([] (auto const&... arrays) {
-                return (true && ... && ([&] (auto const& arr) {
-                    for (auto ptr : arr) {
-                        if (ptr == nullptr) return false;
-                    }
-                    return true;
-                    })(arrays));
-                }, mDataPtrsTuple
-            );
+        template<std::size_t I, typename key_t>
+        constexpr void set_output_ptr(value_for_t<key_t>* ptr) {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(I < output_count<key_t>(), "Invalid output index");
+            auto& data = slot_ptrs<key_t>();
+            data[input_count<key_t>() + I] = ptr;
+        }
+
+        template<std::size_t I, typename key_t>
+        constexpr value_for_t<key_t>* output_ptr() const {
+            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(I < output_count<key_t>(), "Invalid output index");
+            return slot_ptrs<key_t>()[input_count<key_t>() + I];
         }
 
     private:
+
+        template<typename key_t>
+        constexpr auto& slot_ptrs() {
+            constexpr std::size_t index = manifest_t::template index<key_t>();
+            return std::get<index>(mDataPtrsTuple).ptrs;
+        }
+
+        template<typename key_t>
+        constexpr const auto& slot_ptrs() const {
+            constexpr std::size_t index = manifest_t::template index<key_t>();
+            return std::get<index>(mDataPtrsTuple).ptrs;
+        }
 
         template<typename Seq>
         struct data_ptrs_tuple_maker;
 
         template<std::size_t... Is>
         struct data_ptrs_tuple_maker<std::index_sequence<Is...>> {
-            using type = std::tuple<data_array_t<typename manifest_t::template type_at<Is>>...>;
+            using type = std::tuple<data_ptr_slot<typename manifest_t::template spec_at<Is>>...>;
         };
 
-        using tuple_type = typename data_ptrs_tuple_maker<std::make_index_sequence<manifest_t::type_count>>::type;
+        using tuple_type = typename data_ptrs_tuple_maker<std::make_index_sequence<manifest_t::spec_count>>::type;
 
         tuple_type mDataPtrsTuple;
 

@@ -8,14 +8,16 @@ set(TARGET_SRC
 
     topology_priority_tests.cpp
     topology_compile_time_tests.cpp
-    topology_nested_tests.cpp
 
     graph_ordering_tests.cpp
-    graph_nested_tests.cpp
     graph_printer_tests.cpp
     graph_data_count_tests.cpp
+    graph_data_test.cpp
+    graph_bind_data_tests.cpp
     manual_bind_tests.cpp
     audio_graph_tests.cpp
+    manifest_tagged_io_tests.cpp
+    graph_tagged_io_tests.cpp
 
     compile_time_graph_tests.cpp
 

@@ -7,16 +7,66 @@
 
 namespace ugraph::detail {
 
+
+
+
+
+    template<typename Edge, typename = void>
+    struct edge_spec_type;
+
     template<typename Edge>
-    struct edge_data_type {
-        using type = typename Edge::first_type::data_type;
+    struct edge_spec_type<Edge, std::void_t<typename Edge::first_type>> {
+        using type = typename Edge::first_type::spec_type;
+    };
+
+    template<typename Edge, typename = void>
+    struct edge_data_type;
+
+    template<typename Edge>
+    struct edge_data_type<Edge, std::void_t<typename edge_spec_type<Edge>::type>> {
+        using type = typename io_traits<typename edge_spec_type<Edge>::type>::type;
+    };
+
+    template<typename Edge, typename = void>
+    struct edge_dst_spec_type;
+
+    template<typename Edge>
+    struct edge_dst_spec_type<Edge, std::void_t<typename Edge::second_type>> {
+        using type = typename Edge::second_type::spec_type;
+    };
+
+    template<typename src_spec_t, typename dst_spec_t>
+    struct connection_key_type {
+        using src_traits = io_traits<src_spec_t>;
+        using dst_traits = io_traits<dst_spec_t>;
+
+        static_assert(
+            std::is_same_v<typename src_traits::type, typename dst_traits::type>,
+            "Connected ports must use the same value type"
+            );
+
+        static constexpr bool use_value_key = !src_traits::is_tagged || !dst_traits::is_tagged;
+
+        using type = std::conditional_t<
+            use_value_key,
+            typename src_traits::type,
+            typename src_traits::tag
+        >;
+    };
+
+    template<typename Edge>
+    struct edge_key_type {
+        using type = typename connection_key_type<
+            typename edge_spec_type<Edge>::type,
+            typename edge_dst_spec_type<Edge>::type
+        >::type;
     };
 
     template<typename T, typename Edge>
     struct edge_is_type : std::false_type {};
 
     template<typename T, typename S, typename D>
-    struct edge_is_type<T, std::pair<S, D>> : std::bool_constant<std::is_same_v<typename S::data_type, T>> {};
+    struct edge_is_type<T, std::pair<S, D>> : std::bool_constant<std::is_same_v<typename edge_key_type<std::pair<S, D>>::type, T>> {};
 
     template<typename List, typename T>
     struct type_list_append_unique;
@@ -54,6 +104,14 @@ namespace ugraph::detail {
         using head_specs = typename V::module_type::Manifest::specs_list;
         using tail = typename collect_specs_from_typelist<detail::type_list<Vs...>>::type;
         using type = typename append_type_list_unique<head_specs, tail>::type;
+    };
+
+    template<typename TL>
+    struct specs_to_keys;
+
+    template<typename... Ts>
+    struct specs_to_keys<detail::type_list<Ts...>> {
+        using type = typename fold_append_unique<detail::type_list<>, typename io_key<Ts>::type...>::type;
     };
 
     template<typename List>
@@ -94,382 +152,82 @@ namespace ugraph::detail {
         using type = typename type_list_concat<detail::type_list<A..., B...>, Rest...>::type;
     };
 
+    template<typename TL>
+    struct filter_out_data_bindings;
+
+    template<>
+    struct filter_out_data_bindings<detail::type_list<>> { using type = detail::type_list<>; };
+
+    template<typename E, typename... Rest>
+    struct filter_out_data_bindings<detail::type_list<E, Rest...>> {
+        using tail = typename filter_out_data_bindings<detail::type_list<Rest...>>::type;
+        using type = std::conditional_t<
+            detail::is_data_binding<E>::value,
+            tail,
+            typename detail::type_list_prepend<E, tail>::type
+        >;
+    };
+
+
+
     template<typename... edges_t>
     struct data_graph_traits {
-        using topology_t = Topology<edges_t...>;
+        template<typename TL>
+        struct type_list_to_topology;
 
-        template<typename T, typename = void>
-        struct has_nested_graph_interface : std::false_type {};
+        template<typename... Es>
+        struct type_list_to_topology<detail::type_list<Es...>> { using type = Topology<Es...>; };
 
-        template<typename T>
-        struct has_nested_graph_interface<T, std::void_t<
-            typename T::vertex_types_list_public,
-            typename T::edge_types_list_public,
-            typename T::topology_type
-        >> : std::true_type {};
-
-        template<typename node_t, std::size_t port_idx>
-        struct synthetic_input_port {
-            using node_type = node_t;
-            static constexpr std::size_t index() { return port_idx; }
-        };
-
-        template<typename data_t, typename node_t, std::size_t port_idx>
-        struct synthetic_output_port : synthetic_input_port<node_t, port_idx> {
-            using data_type = data_t;
-        };
-
-        template<typename data_t, typename src_node_t, std::size_t src_port_idx, typename dst_node_t, std::size_t dst_port_idx>
-        using synthetic_edge = std::pair<
-            synthetic_output_port<data_t, src_node_t, src_port_idx>,
-            synthetic_input_port<dst_node_t, dst_port_idx>
-        >;
-
-        template<typename V, std::size_t Base>
-        struct shifted_vertex {
-            static constexpr std::size_t id() { return Base + V::id(); }
-            static constexpr std::size_t priority() { return V::priority(); }
-            static constexpr std::size_t index() { return 0; }
-            using module_type = typename V::module_type;
-            using node_type = shifted_vertex<V, Base>;
-        };
-
-        template<typename M, typename = void>
-        struct module_entry_count { static constexpr std::size_t value = 1; };
-
-        template<typename M>
-        struct module_entry_count<M, std::enable_if_t<has_nested_graph_interface<M>::value>> {
-            static constexpr std::size_t compute() {
-                constexpr auto ids = M::topology_type::ids();
-                constexpr auto edges = M::topology_type::edges();
-                std::size_t c = 0;
-                for (std::size_t i = 0; i < ids.size(); ++i) {
-                    bool has_in = false;
-                    for (std::size_t j = 0; j < edges.size(); ++j) {
-                        if (edges[j].second == ids[i]) {
-                            has_in = true;
-                            break;
-                        }
-                    }
-                    if (!has_in) {
-                        ++c;
-                    }
-                }
-                return c;
-            }
-            static constexpr std::size_t value = compute();
-        };
-
-        template<typename M, typename = void>
-        struct module_exit_count { static constexpr std::size_t value = 1; };
-
-        template<typename M>
-        struct module_exit_count<M, std::enable_if_t<has_nested_graph_interface<M>::value>> {
-            static constexpr std::size_t compute() {
-                constexpr auto ids = M::topology_type::ids();
-                constexpr auto edges = M::topology_type::edges();
-                std::size_t c = 0;
-                for (std::size_t i = 0; i < ids.size(); ++i) {
-                    bool has_out = false;
-                    for (std::size_t j = 0; j < edges.size(); ++j) {
-                        if (edges[j].first == ids[i]) {
-                            has_out = true;
-                            break;
-                        }
-                    }
-                    if (!has_out) {
-                        ++c;
-                    }
-                }
-                return c;
-            }
-            static constexpr std::size_t value = compute();
-        };
-
-        template<typename M, std::size_t K>
-        static constexpr std::size_t module_entry_id_at() {
-            constexpr auto ids = M::topology_type::ids();
-            constexpr auto edges = M::topology_type::edges();
-            std::size_t found = 0;
-            for (std::size_t i = 0; i < ids.size(); ++i) {
-                bool has_in = false;
-                for (std::size_t j = 0; j < edges.size(); ++j) {
-                    if (edges[j].second == ids[i]) {
-                        has_in = true;
-                        break;
-                    }
-                }
-                if (!has_in) {
-                    if (found == K) {
-                        return ids[i];
-                    }
-                    ++found;
-                }
-            }
-            return static_cast<std::size_t>(0);
-        }
-
-        template<typename M, std::size_t K>
-        static constexpr std::size_t module_exit_id_at() {
-            constexpr auto ids = M::topology_type::ids();
-            constexpr auto edges = M::topology_type::edges();
-            std::size_t found = 0;
-            for (std::size_t i = 0; i < ids.size(); ++i) {
-                bool has_out = false;
-                for (std::size_t j = 0; j < edges.size(); ++j) {
-                    if (edges[j].first == ids[i]) {
-                        has_out = true;
-                        break;
-                    }
-                }
-                if (!has_out) {
-                    if (found == K) {
-                        return ids[i];
-                    }
-                    ++found;
-                }
-            }
-            return static_cast<std::size_t>(0);
-        }
-
-        template<typename M, std::size_t K, std::size_t Base>
-        using module_entry_vertex_t = shifted_vertex<
-            typename M::topology_type::template find_type_by_id<module_entry_id_at<M, K>()>::type,
-            Base
-        >;
-
-        template<typename M, std::size_t K, std::size_t Base>
-        using module_exit_vertex_t = shifted_vertex<
-            typename M::topology_type::template find_type_by_id<module_exit_id_at<M, K>()>::type,
-            Base
-        >;
-
-        template<typename data_t, typename src_node_t, std::size_t src_port_idx, typename dst_node_t, std::size_t dst_port_idx, std::size_t... I>
-        static auto make_src_to_entries(std::index_sequence<I...>)
-            -> detail::type_list<synthetic_edge<data_t, src_node_t, src_port_idx, module_entry_vertex_t<typename dst_node_t::module_type, I, dst_node_t::id()>, 0>...>;
-
-        template<typename data_t, typename src_node_t, std::size_t src_port_idx, typename dst_node_t, std::size_t dst_port_idx, std::size_t... I>
-        static auto make_exits_to_dst(std::index_sequence<I...>)
-            -> detail::type_list<synthetic_edge<data_t, module_exit_vertex_t<typename src_node_t::module_type, I, src_node_t::id()>, 0, dst_node_t, dst_port_idx>...>;
-
-        template<typename data_t, typename src_node_t, std::size_t src_port_idx, typename dst_node_t, std::size_t dst_port_idx, std::size_t S, std::size_t... D>
-        static auto make_exit_to_entries_for_source(std::index_sequence<D...>)
-            -> detail::type_list<synthetic_edge<data_t, module_exit_vertex_t<typename src_node_t::module_type, S, src_node_t::id()>, 0, module_entry_vertex_t<typename dst_node_t::module_type, D, dst_node_t::id()>, 0>...>;
-
-        template<typename Edge, std::size_t Base>
-        struct remap_edge_with_base {
-            using tr = detail::edge_traits<Edge>;
-            using data_t = typename detail::edge_data_type<Edge>::type;
-            using src_node_t = typename tr::src_vertex_t;
-            using dst_node_t = typename tr::dst_vertex_t;
-            using type = synthetic_edge<
-                data_t,
-                shifted_vertex<src_node_t, Base>,
-                tr::src_port_index,
-                shifted_vertex<dst_node_t, Base>,
-                tr::dst_port_index
-            >;
-        };
-
-        template<typename TL, std::size_t Base>
-        struct remap_edge_list_with_base;
-
-        template<std::size_t Base, typename... Es>
-        struct remap_edge_list_with_base<detail::type_list<Es...>, Base> {
-            using type = detail::type_list<typename remap_edge_with_base<Es, Base>::type...>;
-        };
-
-        template<typename data_t, typename src_node_t, std::size_t src_port_idx, typename dst_node_t, std::size_t dst_port_idx, std::size_t... S>
-        static auto make_exits_to_entries(std::index_sequence<S...>)
-            -> typename type_list_concat<decltype(make_exit_to_entries_for_source<data_t, src_node_t, src_port_idx, dst_node_t, dst_port_idx, S>(
-                std::make_index_sequence<module_entry_count<typename dst_node_t::module_type>::value>{
-            }))...>::type;
-
-        template<typename Edge, bool SrcNested, bool DstNested>
-        struct expand_edge_types_impl;
-
-        template<typename Edge>
-        struct expand_edge_types_impl<Edge, false, false> {
-            using type = detail::type_list<Edge>;
-        };
-
-        template<typename Edge>
-        struct expand_edge_types_impl<Edge, true, false> {
-            using tr = detail::edge_traits<Edge>;
-            using data_t = typename detail::edge_data_type<Edge>::type;
-            using src_node_t = typename tr::src_vertex_t;
-            using dst_node_t = typename tr::dst_vertex_t;
-            using type = decltype(make_exits_to_dst<data_t, src_node_t, tr::src_port_index, dst_node_t, tr::dst_port_index>(
-                std::make_index_sequence<module_exit_count<typename src_node_t::module_type>::value>{
-            }));
-        };
-
-        template<typename Edge>
-        struct expand_edge_types_impl<Edge, false, true> {
-            using tr = detail::edge_traits<Edge>;
-            using data_t = typename detail::edge_data_type<Edge>::type;
-            using src_node_t = typename tr::src_vertex_t;
-            using dst_node_t = typename tr::dst_vertex_t;
-            using type = decltype(make_src_to_entries<data_t, src_node_t, tr::src_port_index, dst_node_t, tr::dst_port_index>(
-                std::make_index_sequence<module_entry_count<typename dst_node_t::module_type>::value>{
-            }));
-        };
-
-        template<typename Edge>
-        struct expand_edge_types_impl<Edge, true, true> {
-            using tr = detail::edge_traits<Edge>;
-            using data_t = typename detail::edge_data_type<Edge>::type;
-            using src_node_t = typename tr::src_vertex_t;
-            using dst_node_t = typename tr::dst_vertex_t;
-            using type = decltype(make_exits_to_entries<data_t, src_node_t, tr::src_port_index, dst_node_t, tr::dst_port_index>(
-                std::make_index_sequence<module_exit_count<typename src_node_t::module_type>::value>{
-            }));
-        };
-
-        template<typename Edge>
-        struct expand_edge_types {
-            using tr = detail::edge_traits<Edge>;
-            using src_node_t = typename tr::src_vertex_t;
-            using dst_node_t = typename tr::dst_vertex_t;
-            static constexpr bool src_nested = has_nested_graph_interface<typename src_node_t::module_type>::value;
-            static constexpr bool dst_nested = has_nested_graph_interface<typename dst_node_t::module_type>::value;
-            using type = typename expand_edge_types_impl<Edge, src_nested, dst_nested>::type;
-        };
-
-        template<typename Edge, bool SrcNested, bool DstNested>
-        struct nested_internal_edge_types_impl;
-
-        template<typename Edge>
-        struct nested_internal_edge_types_impl<Edge, false, false> { using type = detail::type_list<>; };
-
-        template<typename Edge>
-        struct nested_internal_edge_types_impl<Edge, true, false> {
-            using src_node_t = typename detail::edge_traits<Edge>::src_vertex_t;
-            using type = typename remap_edge_list_with_base<
-                typename src_node_t::module_type::edge_types_list_public,
-                src_node_t::id()
-            >::type;
-        };
-
-        template<typename Edge>
-        struct nested_internal_edge_types_impl<Edge, false, true> {
-            using dst_node_t = typename detail::edge_traits<Edge>::dst_vertex_t;
-            using type = typename remap_edge_list_with_base<
-                typename dst_node_t::module_type::edge_types_list_public,
-                dst_node_t::id()
-            >::type;
-        };
-
-        template<typename Edge>
-        struct nested_internal_edge_types_impl<Edge, true, true> {
-            using src_node_t = typename detail::edge_traits<Edge>::src_vertex_t;
-            using dst_node_t = typename detail::edge_traits<Edge>::dst_vertex_t;
-            using type = typename type_list_concat<
-                typename remap_edge_list_with_base<
-                    typename src_node_t::module_type::edge_types_list_public,
-                    src_node_t::id()
-                >::type,
-                typename remap_edge_list_with_base<
-                    typename dst_node_t::module_type::edge_types_list_public,
-                    dst_node_t::id()
-                >::type
-            >::type;
-        };
-
-        template<typename Edge>
-        struct nested_internal_edge_types_for {
-            using tr = detail::edge_traits<Edge>;
-            using src_node_t = typename tr::src_vertex_t;
-            using dst_node_t = typename tr::dst_vertex_t;
-            static constexpr bool src_nested = has_nested_graph_interface<typename src_node_t::module_type>::value;
-            static constexpr bool dst_nested = has_nested_graph_interface<typename dst_node_t::module_type>::value;
-            using type = typename nested_internal_edge_types_impl<Edge, src_nested, dst_nested>::type;
-        };
-
-        template<typename List, typename... Es>
-        struct fold_flatten_edges;
-
-        template<typename List>
-        struct fold_flatten_edges<List> { using type = List; };
-
-        template<typename List, typename E0, typename... Rest>
-        struct fold_flatten_edges<List, E0, Rest...> {
-            using expanded_t = typename expand_edge_types<E0>::type;
-            using nested_t = typename nested_internal_edge_types_for<E0>::type;
-            using next_t = typename type_list_concat<List, expanded_t, nested_t>::type;
-            using type = typename fold_flatten_edges<next_t, Rest...>::type;
-        };
-
-        using flattened_edges_t = typename fold_flatten_edges<detail::type_list<>, edges_t...>::type;
+        using edge_types_list = typename filter_out_data_bindings<detail::type_list<edges_t...>>::type;
+        using topology_t = typename type_list_to_topology<edge_types_list>::type;
 
         template<std::size_t I>
-        using node_type_at = typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type;
+        using node_type_at = typename topology_t::template type_at<I>;
 
-        using graph_types_list = typename collect_specs_from_typelist<typename topology_t::vertex_types_list_public>::type;
+        template<std::size_t Id>
+        using module_ptr_for_id_t = typename topology_t::template find_type_by_id<Id>::type::module_type*;
+
+        using graph_types_list = typename collect_specs_from_typelist<typename topology_t::vertex_types_list>::type;
+        using graph_keys_list = typename specs_to_keys<graph_types_list>::type;
         using manifest_t = typename manifest_from_list<graph_types_list>::type;
         static constexpr std::size_t invalid_index = static_cast<std::size_t>(-1);
 
+        static constexpr std::size_t key_count = detail::type_list_size<graph_keys_list>::value;
+
+        template<std::size_t I>
+        using key_type_at = typename detail::type_list_at<I, graph_keys_list>::type;
+
         template<std::size_t... I>
         static constexpr auto make_modules_tuple_t(std::index_sequence<I...>) ->
-            std::tuple<typename topology_t::template find_type_by_id<topology_t::template id_at<I>()>::type::module_type*...>;
+            std::tuple<typename topology_t::template type_at<I>::module_type*...>;
 
         using modules_tuple_t = decltype(make_modules_tuple_t(std::make_index_sequence<topology_t::size()>{}));
 
-        template<std::size_t id, typename Edge>
+        template<std::size_t Id, typename Edge>
         static constexpr auto try_edge_module(const Edge& e) {
-            using S = typename detail::edge_traits<Edge>::src_vertex_t;
-            using wanted_module_t = typename topology_t::template find_type_by_id<id>::type::module_type;
-            using wanted_ptr_t = wanted_module_t*;
-
-            using D = typename detail::edge_traits<Edge>::dst_vertex_t;
-
-            auto try_nested_from_src = [] (auto& module) constexpr -> wanted_ptr_t {
-                using module_t = std::decay_t<decltype(module)>;
-                if constexpr (has_nested_graph_interface<module_t>::value) {
-                    if constexpr ((id >= S::id()) && module_t::template contains_node_id<id - S::id()>()) {
-                        if constexpr (std::is_convertible_v<decltype(module.template module_ptr_by_id<id - S::id()>()), wanted_ptr_t>) {
-                            return module.template module_ptr_by_id<id - S::id()>();
-                        }
-                    }
-                }
-                return nullptr;
-                };
-
-            auto try_nested_from_dst = [] (auto& module) constexpr -> wanted_ptr_t {
-                using module_t = std::decay_t<decltype(module)>;
-                if constexpr (has_nested_graph_interface<module_t>::value) {
-                    if constexpr ((id >= D::id()) && module_t::template contains_node_id<id - D::id()>()) {
-                        if constexpr (std::is_convertible_v<decltype(module.template module_ptr_by_id<id - D::id()>()), wanted_ptr_t>) {
-                            return module.template module_ptr_by_id<id - D::id()>();
-                        }
-                    }
-                }
-                return nullptr;
-                };
-
-            if constexpr (S::id() == id) {
-                return &e.first.module();
+            if constexpr (detail::is_data_binding<Edge>::value) {
+                return static_cast<module_ptr_for_id_t<Id>>(nullptr);
             }
             else {
-                if constexpr (D::id() == id) {
+                using S = typename detail::edge_traits<Edge>::src_vertex_t;
+                using D = typename detail::edge_traits<Edge>::dst_vertex_t;
+
+                if constexpr (S::id() == Id) {
+                    return &e.first.module();
+                }
+                else if constexpr (D::id() == Id) {
                     return &e.second.module();
                 }
                 else {
-                    if (auto* p = try_nested_from_src(e.first.module())) {
-                        return p;
-                    }
-                    if (auto* p = try_nested_from_dst(e.second.module())) {
-                        return p;
-                    }
-                    return (typename topology_t::template find_type_by_id<id>::type::module_type*)nullptr;
+                    return static_cast<module_ptr_for_id_t<Id>>(nullptr);
                 }
             }
         }
 
-        template<std::size_t id>
+        template<std::size_t Id>
         static constexpr auto get_module_ptr(const edges_t&... es) {
-            typename topology_t::template find_type_by_id<id>::type::module_type* r = nullptr;
-            ((r = r ? r : try_edge_module<id>(es)), ...);
+            module_ptr_for_id_t<Id> r = nullptr;
+            ((r = r ? r : try_edge_module<Id>(es)), ...);
             return r;
         }
 
@@ -479,7 +237,7 @@ namespace ugraph::detail {
         }
 
         template<typename T>
-        using edge_list_for_t = typename detail::filter_edges<T, flattened_edges_t>::type;
+        using edge_list_for_t = typename detail::filter_edges<T, edge_types_list>::type;
 
         template<typename T>
         using coloring_t = typename detail::coloring_or_empty<topology_t, edge_list_for_t<T>>::type;
@@ -493,14 +251,14 @@ namespace ugraph::detail {
         template<typename T, std::size_t VID, std::size_t PORT, typename E0, typename... Rest>
         struct has_input_edge_impl<T, VID, PORT, detail::type_list<E0, Rest...>> {
             using tr = detail::edge_traits<E0>;
-            static constexpr bool match = std::is_same_v<T, typename detail::edge_data_type<E0>::type> &&
+            static constexpr bool match = std::is_same_v<T, typename detail::edge_key_type<E0>::type> &&
                 (tr::dst_id == VID) && (tr::dst_port_index == PORT);
             static constexpr bool value = match ? true : has_input_edge_impl<T, VID, PORT, detail::type_list<Rest...>>::value;
         };
 
         template<typename T, std::size_t VID, std::size_t PORT>
         static constexpr bool has_input_edge() {
-            return has_input_edge_impl<T, VID, PORT, flattened_edges_t>::value;
+            return has_input_edge_impl<T, VID, PORT, edge_types_list>::value;
         }
 
         template<typename T, std::size_t VID, std::size_t PORT, typename EdgeList>
@@ -512,15 +270,35 @@ namespace ugraph::detail {
         template<typename T, std::size_t VID, std::size_t PORT, typename E0, typename... Rest>
         struct has_output_edge_impl<T, VID, PORT, detail::type_list<E0, Rest...>> {
             using tr = detail::edge_traits<E0>;
-            static constexpr bool match = std::is_same_v<T, typename detail::edge_data_type<E0>::type> &&
+            static constexpr bool match = std::is_same_v<T, typename detail::edge_key_type<E0>::type> &&
                 (tr::src_id == VID) && (tr::src_port_index == PORT);
             static constexpr bool value = match ? true : has_output_edge_impl<T, VID, PORT, detail::type_list<Rest...>>::value;
         };
 
         template<typename T, std::size_t VID, std::size_t PORT>
         static constexpr bool has_output_edge() {
-            return has_output_edge_impl<T, VID, PORT, flattened_edges_t>::value;
+            return has_output_edge_impl<T, VID, PORT, edge_types_list>::value;
         }
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename EdgeList>
+        struct input_edge_key_impl;
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT>
+        struct input_edge_key_impl<spec_t, VID, PORT, detail::type_list<>> {
+            using type = void;
+        };
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename E0, typename... Rest>
+        struct input_edge_key_impl<spec_t, VID, PORT, detail::type_list<E0, Rest...>> {
+            using tr = detail::edge_traits<E0>;
+            using type = std::conditional_t<
+                (tr::dst_id == VID) &&
+                (tr::dst_port_index == PORT) &&
+                std::is_same_v<typename tr::dst_port_t::spec_type, spec_t>,
+                typename detail::edge_key_type<E0>::type,
+                typename input_edge_key_impl<spec_t, VID, PORT, detail::type_list<Rest...>>::type
+            >;
+        };
 
         template<typename T, std::size_t NodeIndex, std::size_t PortIndex>
         static constexpr std::size_t input_index_for() {
@@ -543,6 +321,52 @@ namespace ugraph::detail {
                 return invalid_index;
             }
         }
+
+        template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
+        static constexpr std::size_t input_index_for_spec() {
+            using key_t = typename input_key_for_spec<spec_t, NodeIndex, PortIndex>::type;
+            if constexpr (std::is_same_v<key_t, void>) {
+                return invalid_index;
+            }
+            else {
+                return input_index_for<key_t, NodeIndex, PortIndex>();
+            }
+        }
+
+        template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
+        static constexpr std::size_t output_index_for_spec() {
+            using tag_key_t = typename io_key<spec_t>::type;
+            constexpr std::size_t tagged_index = output_index_for<tag_key_t, NodeIndex, PortIndex>();
+
+            if constexpr (io_traits<spec_t>::is_tagged) {
+                using value_key_t = typename io_traits<spec_t>::type;
+                constexpr std::size_t value_index = output_index_for<value_key_t, NodeIndex, PortIndex>();
+                static_assert(
+                    !(tagged_index != invalid_index && value_index != invalid_index),
+                    "Tagged output port cannot be connected through both tag and value keys"
+                    );
+                return tagged_index != invalid_index ? tagged_index : value_index;
+            }
+            else {
+                return tagged_index;
+            }
+        }
+
+        template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
+        struct input_key_for_spec {
+            static constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
+            using type = typename input_edge_key_impl<spec_t, vid, PortIndex, edge_types_list>::type;
+        };
+
+        template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
+        struct output_key_for_spec {
+            using tag_key_t = typename io_key<spec_t>::type;
+            using type = std::conditional_t<
+                output_index_for<tag_key_t, NodeIndex, PortIndex>() != invalid_index,
+                tag_key_t,
+                typename io_traits<spec_t>::type
+            >;
+        };
 
 
     };
