@@ -4,11 +4,8 @@
 #include <sstream>
 #include <string>
 #include <iostream>
+#include "dbg_print_graph.hpp"
 
-
-void printOutput(const std::string& inName, const std::string& str) {
-    std::cout << "\n --- \n" << "# " << inName << "\n" << str << std::endl;
-}
 
 struct MyType;
 
@@ -21,7 +18,6 @@ TEST_CASE("type name test") {
     CHECK(ugraph::type_name<MyType>() == "MyType");
 
     static constexpr auto type_str = ugraph::type_name<MyTemplateType<const MyType**>>();
-    std::cout << "Type name test: " << type_str << std::endl;
 
     CHECK((
         type_str == "MyTemplateType<const MyType**>" ||
@@ -89,7 +85,6 @@ TEST_CASE("graph print test") {
         CHECK(out.find("102 --> 103") != std::string::npos);
         CHECK(out.find("103 --> 104") != std::string::npos);
 
-        //printOutput("graph test", out);
     }
 
     {
@@ -119,7 +114,6 @@ TEST_CASE("graph print test") {
 
         CHECK(out.find("102 --> 101 --> 103 --> 104") != std::string::npos);
 
-        //printOutput("pipeline graph test", out);
     }
 
     {
@@ -154,7 +148,7 @@ TEST_CASE("graph print test shows tagged io names") {
     CHECK(out.find("202(\"PrinterSink\")") != std::string::npos);
     CHECK(out.find("201 -->|PrinterTagA| 202") != std::string::npos);
 
-    g.print(std::cout);
+    dbgPrintGraph(g, "Tagged");
 }
 
 TEST_CASE("graph print test shows several tagged io names") {
@@ -179,7 +173,7 @@ TEST_CASE("graph print test shows several tagged io names") {
     CHECK(out.find("203 -->|PrinterTagA| 204") != std::string::npos);
     CHECK(out.find("203 -->|PrinterTagB| 204") != std::string::npos);
 
-    g.print(std::cout);
+    dbgPrintGraph(g, "Tagged");
 }
 
 TEST_CASE("topology print test") {
@@ -211,7 +205,6 @@ TEST_CASE("topology print test") {
         CHECK(out.find("102 --> 103") != std::string::npos);
         CHECK(out.find("103 --> 104") != std::string::npos);
 
-        //printOutput("topology test", out);
     }
 
     // test print_pipeline
@@ -223,7 +216,6 @@ TEST_CASE("topology print test") {
         CHECK(out.rfind("```mermaid\nflowchart LR\n", 0) == 0);
         CHECK(out.find("102 --> 101 --> 103 --> 104") != std::string::npos);
 
-        //printOutput("topology pipeline test", out);
     }
 }
 
@@ -260,7 +252,6 @@ TEST_CASE("split topology print test") {
 
         CHECK(out.find("104 --> 105\n") != std::string::npos);
 
-        //printOutput("split topology graph test", out);
     }
 
     // test print_pipeline
@@ -272,7 +263,6 @@ TEST_CASE("split topology print test") {
         CHECK(out.rfind("```mermaid\nflowchart LR\n", 0) == 0);
         CHECK(out.find("102 --> 101 --> 103 --> 104 --> 105") != std::string::npos);
 
-        //printOutput("split topology pipeline test", out);
     }
 
 }

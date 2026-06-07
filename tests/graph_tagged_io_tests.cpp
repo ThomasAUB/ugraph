@@ -1,6 +1,7 @@
 #include "doctest.h"
 #include "ugraph.hpp"
 #include <iostream>
+#include "dbg_print_graph.hpp"
 
 TEST_CASE("Graph routes data using TaggedIO tags") {
 
@@ -186,5 +187,5 @@ TEST_CASE("Graph connects one tag to a different tag of the same value type") {
 
     CHECK(consumer.value == 55);
 
-    g.print(std::cout);
+    dbgPrintGraph(g, "Tagged");
 }

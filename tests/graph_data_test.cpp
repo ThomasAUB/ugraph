@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <vector>
+#include "dbg_print_graph.hpp"
 
 using MyData1 = int;
 
@@ -159,7 +160,9 @@ TEST_CASE("graph data propagation") {
     CHECK(sink.event_value == 789);
 
     std::ostringstream oss;
+
     graph.print(oss, "", true, true);
+
     const std::string out = oss.str();
 
     CHECK(out.find("data_0(( ))") != std::string::npos);
@@ -348,7 +351,6 @@ TEST_CASE("external data graph reuses external graph data") {
 
     CHECK(oss.str() == expected);
 
-    //graphA.print(std::cout);
 }
 
 TEST_CASE("external data graph feedback graph data") {
@@ -396,5 +398,6 @@ TEST_CASE("external data graph feedback graph data") {
 
     CHECK(oss.str() == expected);
 
-    graph.print(std::cout);
+    dbgPrintGraph(graph, "External");
+
 }
