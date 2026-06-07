@@ -207,9 +207,7 @@ TEST_CASE("basic synth voice test") {
         voice.graph_data().template slot<AudioBuffer>(i) = storage[i];
     }
 
-    //voice.print();
     voice.process();
-
 }
 
 TEST_CASE("audio graph simple chain correctness") {

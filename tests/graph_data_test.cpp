@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <vector>
+#include "dbg_print_graph.hpp"
 
 using MyData1 = int;
 
@@ -77,14 +78,14 @@ namespace {
         oss << "flowchart LR\n";
 
         if (showVertexIds) {
-            oss << "100(Source 100)\n";
-            oss << "101(Module1 101)\n";
-            oss << "102(Sink 102)\n";
+            oss << "100(\"Source 100\")\n";
+            oss << "101(\"Module1 101\")\n";
+            oss << "102(\"Sink 102\")\n";
         }
         else {
-            oss << "100(Source)\n";
-            oss << "101(Module1)\n";
-            oss << "102(Sink)\n";
+            oss << "100(\"Source\")\n";
+            oss << "101(\"Module1\")\n";
+            oss << "102(\"Sink\")\n";
         }
 
         oss << "100 -->|int| 101\n";
@@ -100,9 +101,9 @@ namespace {
         std::ostringstream oss;
         oss << "```mermaid\n";
         oss << "flowchart LR\n";
-        oss << "100(Source 100)\n";
-        oss << "101(Module1 101)\n";
-        oss << "102(Sink 102)\n";
+        oss << "100(\"Source 100\")\n";
+        oss << "101(\"Module1 101\")\n";
+        oss << "102(\"Sink 102\")\n";
         oss << "data_0(( ))\n";
         oss << "100 -->|int| 101\n";
         oss << "101 -->|int| 102\n";
@@ -159,7 +160,9 @@ TEST_CASE("graph data propagation") {
     CHECK(sink.event_value == 789);
 
     std::ostringstream oss;
+
     graph.print(oss, "", true, true);
+
     const std::string out = oss.str();
 
     CHECK(out.find("data_0(( ))") != std::string::npos);
@@ -348,7 +351,6 @@ TEST_CASE("external data graph reuses external graph data") {
 
     CHECK(oss.str() == expected);
 
-    //graphA.print(std::cout);
 }
 
 TEST_CASE("external data graph feedback graph data") {
@@ -386,8 +388,8 @@ TEST_CASE("external data graph feedback graph data") {
     const std::string expected =
         "```mermaid\n"
         "flowchart LR\n"
-        "100(Start 100)\n"
-        "101(Recursive 101)\n"
+        "100(\"Start 100\")\n"
+        "101(\"Recursive 101\")\n"
         "data_0(( ))\n"
         "100 -->|int| 101\n"
         "101 -->|int| data_0\n"
@@ -396,5 +398,6 @@ TEST_CASE("external data graph feedback graph data") {
 
     CHECK(oss.str() == expected);
 
-    //graph.print(std::cout);
+    dbgPrintGraph(graph, "External");
+
 }
