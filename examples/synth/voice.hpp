@@ -1,43 +1,49 @@
 #pragma once
 
-#include <cstdint>
-#include <array>
 #include "ugraph.hpp"
+#include "audio_buffer.hpp"
+#include "envelope_generator.hpp"
+#include "gain.hpp"
 #include "mixer.hpp"
 #include "oscillator.hpp"
-#include "audio_buffer.hpp"
 #include "trigger.hpp"
-#include <cmath>
-#include "gain.hpp"
-#include "envelope_generator.hpp"
 
+static auto makeGraph(
+    Trigger& trigger,
+    Oscillator& osc,
+    EnvelopeGenerator& env,
+    Gain& gain,
+    AudioBuff& outBuff
+) {
 
-enum eVoiceNodes {
-    eOsc,
-    eEnv,
-    eGain
-};
+    auto oscN = ugraph::make_node<__COUNTER__>(osc);
+    auto envN = ugraph::make_node<__COUNTER__>(env);
+    auto gainN = ugraph::make_node<__COUNTER__>(gain);
 
-static auto makeGraph(Oscillator& osc, EnvelopeGenerator& env, Gain& gain) {
-
-    auto oscN = ugraph::make_node<eOsc>(osc);
-    auto envN = ugraph::make_node<eEnv>(env);
-    auto gainN = ugraph::make_node<eGain>(gain);
-
-    return ugraph::Graph(
+    return ugraph::ExternalDataGraph(
+        trigger | oscN.input<Trigger>(),
+        trigger | envN.input<Trigger>(),
         oscN.output<AudioBuff>() >> gainN.input<AudioBuff>(),
-        envN.output<float>() >> gainN.input<float>()
+        envN.output<float>() >> gainN.input<float>(),
+        gainN.output<AudioBuff>() | outBuff
     );
 }
 
 struct Voice {
 
+    using Manifest = ugraph::Manifest<
+        ugraph::IO<AudioBuff, 0, 1>,
+        ugraph::IO<Trigger, 1, 0>
+    >;
+
     using graph_t =
         decltype(
             makeGraph(
+                std::declval<Trigger&>(),
                 std::declval<Oscillator&>(),
                 std::declval<EnvelopeGenerator&>(),
-                std::declval<Gain&>()
+                std::declval<Gain&>(),
+                std::declval<AudioBuff&>()
             )
             );
 
@@ -45,8 +51,16 @@ struct Voice {
         return mGraph;
     }
 
-    void print() {
-        mGraph.print(std::cout);
+    void process(ugraph::Context<Manifest>& ctx) {
+
+        mOutput = ctx.output<AudioBuff>();
+        mTrigger = ctx.input<Trigger>();
+
+        mGraph.for_each(
+            [] (auto& node, auto& graphCtx) {
+                node.process(graphCtx);
+            }
+        );
     }
 
 private:
@@ -55,6 +69,14 @@ private:
     EnvelopeGenerator mEnv;
     Gain mGain;
 
-    graph_t mGraph = makeGraph(mOscillator, mEnv, mGain);
+    Trigger mTrigger;
+    AudioBuff mOutput;
 
+    graph_t mGraph = makeGraph(
+        mTrigger,
+        mOscillator,
+        mEnv,
+        mGain,
+        mOutput
+    );
 };

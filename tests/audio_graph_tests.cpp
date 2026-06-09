@@ -111,87 +111,91 @@ namespace {
 
 }
 
-template<std::size_t id, typename module_t>
-using GraphNode = ugraph::Node<id, module_t, typename module_t::Manifest>;
+namespace {
+
+    template<std::size_t id, typename module_t>
+    using GraphNode = ugraph::Node<id, module_t, typename module_t::Manifest>;
 
 
-static auto makeVoiceGraph(
-    ConstantSource& s1,
-    ConstantSource& s2,
-    Mixer2& m,
-    Gain& g,
-    Sink& s,
-    uint16_t(&params)[2]
-) {
+    static auto makeVoiceGraph(
+        ConstantSource& s1,
+        ConstantSource& s2,
+        Mixer2& m,
+        Gain& g,
+        Sink& s,
+        uint16_t(&params)[2]
+    ) {
 
-    auto vA = ugraph::make_node<0>(s1);
-    auto vB = ugraph::make_node<1>(s2);
-    auto vMix = ugraph::make_node<2>(m);
-    auto vGain = ugraph::make_node<3>(g);
-    auto vSink = ugraph::make_node<4>(s);
+        auto vA = ugraph::make_node<0>(s1);
+        auto vB = ugraph::make_node<1>(s2);
+        auto vMix = ugraph::make_node<2>(m);
+        auto vGain = ugraph::make_node<3>(g);
+        auto vSink = ugraph::make_node<4>(s);
 
-    return ugraph::Graph(
-        params[0] | vA.input<ParametersTag>(),
-        params[1] | vB.input<ParametersTag>(),
-        vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(),
-        vB.output<AudioBuffer>() >> vMix.input<AudioBuffer, 1>(),
-        vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(),
-        vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
-    );
-}
-
-using voice_graph_t = decltype(
-    makeVoiceGraph(
-        std::declval<ConstantSource&>(),
-        std::declval<ConstantSource&>(),
-        std::declval<Mixer2&>(),
-        std::declval<Gain&>(),
-        std::declval<Sink&>(),
-        std::declval<uint16_t(&)[2]>()
-    )
-    );
-
-
-struct Voice {
-
-    using graph_data_t = voice_graph_t::graph_data_t;
-
-    Voice() :
-        mGraph(makeVoiceGraph(sa, sb, mix, gain, sink, mParams)) {}
-
-    void setFreq(uint16_t inFreq) {
-        mParams[0] = inFreq;
-        mParams[1] = inFreq;
-    }
-
-    void process() {
-        mGraph.for_each(
-            [] (auto& m, auto& ctx) {
-                m.process(ctx);
-            }
+        return ugraph::Graph(
+            params[0] | vA.input<ParametersTag>(),
+            params[1] | vB.input<ParametersTag>(),
+            vA.output<AudioBuffer>() >> vMix.input<AudioBuffer, 0>(),
+            vB.output<AudioBuffer>() >> vMix.input<AudioBuffer, 1>(),
+            vMix.output<AudioBuffer>() >> vGain.input<AudioBuffer>(),
+            vGain.output<AudioBuffer>() >> vSink.input<AudioBuffer>()
         );
     }
 
-    void print() {
-        mGraph.print(std::cout);
-    }
+    using voice_graph_t = decltype(
+        makeVoiceGraph(
+            std::declval<ConstantSource&>(),
+            std::declval<ConstantSource&>(),
+            std::declval<Mixer2&>(),
+            std::declval<Gain&>(),
+            std::declval<Sink&>(),
+            std::declval<uint16_t(&)[2]>()
+        )
+        );
 
-    graph_data_t& graph_data() {
-        return mGraph.graph_data();
-    }
 
-private:
+    struct AudioTestVoice {
 
-    ConstantSource sa { 0.25f };
-    ConstantSource sb { 0.75f };
-    Mixer2        mix {};
-    Gain          gain { 0.5f };
-    Sink          sink {};
+        using graph_data_t = voice_graph_t::graph_data_t;
 
-    uint16_t mParams[2];
+        AudioTestVoice() :
+            mGraph(makeVoiceGraph(sa, sb, mix, gain, sink, mParams)) {}
 
-    voice_graph_t mGraph;
-};
+        void setFreq(uint16_t inFreq) {
+            mParams[0] = inFreq;
+            mParams[1] = inFreq;
+        }
+
+        void process() {
+            mGraph.for_each(
+                [] (auto& m, auto& ctx) {
+                    m.process(ctx);
+                }
+            );
+        }
+
+        void print() {
+            mGraph.print(std::cout);
+        }
+
+        graph_data_t& graph_data() {
+            return mGraph.graph_data();
+        }
+
+    private:
+
+        ConstantSource sa { 0.25f };
+        ConstantSource sb { 0.75f };
+        Mixer2        mix {};
+        Gain          gain { 0.5f };
+        Sink          sink {};
+
+        uint16_t mParams[2];
+
+        voice_graph_t mGraph;
+    };
+
+}
 
 TEST_CASE("basic synth voice test") {
 
@@ -201,7 +205,7 @@ TEST_CASE("basic synth voice test") {
     using buffer_storage_t = std::array<float, storage_size>;
     std::array<buffer_storage_t, storage_count> storage;
 
-    Voice voice;
+    AudioTestVoice voice;
 
     for (int i = 0; i < storage_count; i++) {
         voice.graph_data().template slot<AudioBuffer>(i) = storage[i];

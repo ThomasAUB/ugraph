@@ -21,6 +21,7 @@ set(TARGET_SRC
 
     compile_time_graph_tests.cpp
 
+    example_test.cpp
 )
 
 add_executable(${UGRAPH_UNIT_TESTS} ${TARGET_SRC})

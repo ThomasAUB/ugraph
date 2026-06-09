@@ -221,16 +221,6 @@ namespace ugraph {
             constexpr std::size_t out_count = node_manifest::template output_count<key_t>();
             static_assert(output_index < out_count, "Invalid output index for this node/type");
 
-            // Ensure the specific output port is not already connected in the graph
-            constexpr bool is_connected = (
-                traits::template output_index_for_spec<spec_t, node_index, output_index>() !=
-                traits::invalid_index
-                );
-            static_assert(
-                !is_connected,
-                "Requested output port is already connected; cannot bind_output_at"
-                );
-
             auto& ctx = std::get<node_index>(mContexts);
             ctx.template set_output_ptr<output_index, spec_t>(&data);
         }
@@ -247,13 +237,6 @@ namespace ugraph {
             static_assert(std::is_same_v<std::remove_cv_t<std::remove_reference_t<data_t>>, storage_t>, "Bound data type does not match node input type");
             constexpr std::size_t in_count = node_manifest::template input_count<key_t>();
             static_assert(input_index < in_count, "Invalid input index for this node/type");
-
-            // Ensure the specific input port is not already connected in the graph
-            constexpr bool is_connected = (
-                traits::template input_index_for_spec<spec_t, node_index, input_index>() !=
-                traits::invalid_index
-                );
-            static_assert(!is_connected, "Requested input port is already connected; cannot bind_input_at");
 
             auto& ctx = std::get<node_index>(mContexts);
             ctx.template set_input_ptr<input_index, spec_t>(&data);
@@ -297,7 +280,8 @@ namespace ugraph {
         ) {
             (([&] {
                 constexpr std::size_t data_index = traits::template input_index_for_spec<spec_t, node_index, ps>();
-                if constexpr (data_index != traits::invalid_index) {
+                constexpr bool has_explicit_binding = traits::template has_explicit_input_binding_for_spec<spec_t, node_index, ps>();
+                if constexpr (data_index != traits::invalid_index && !has_explicit_binding) {
                     using key_t = typename traits::template input_key_for_spec<spec_t, node_index, ps>::type;
                     auto& arr = graphData.template slots<key_t>();
                     ctx.template set_input_ptr<ps, spec_t>(&arr[data_index]);
@@ -313,7 +297,8 @@ namespace ugraph {
         ) {
             (([&] {
                 constexpr std::size_t data_index = traits::template output_index_for_spec<spec_t, node_index, ps>();
-                if constexpr (data_index != traits::invalid_index) {
+                constexpr bool has_explicit_binding = traits::template has_explicit_output_binding_for_spec<spec_t, node_index, ps>();
+                if constexpr (data_index != traits::invalid_index && !has_explicit_binding) {
                     using key_t = typename traits::template output_key_for_spec<spec_t, node_index, ps>::type;
                     auto& arr = graphData.template slots<key_t>();
                     ctx.template set_output_ptr<ps, spec_t>(&arr[data_index]);

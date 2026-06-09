@@ -2,81 +2,77 @@
 
 #include <cstddef>
 #include <array>
-#include <utility>
 #include <vector>
+#include <iostream>
 
 #include "voice_manager.hpp"
-#include "oscillator.hpp"
-#include "envelope_generator.hpp"
-#include "gain.hpp"
+#include "voice.hpp"
 #include "mixer.hpp"
 
-template<std::size_t voice_count>
+static constexpr std::size_t voice_count = 4;
+
 static auto makeGraph(
     std::vector<Trigger>& triggers,
     AudioBuff& outputBuffer,
     VoiceManager<voice_count>& voiceMgr,
-    std::array<Oscillator, voice_count>& oscillators,
-    std::array<EnvelopeGenerator, voice_count>& envelopes,
-    std::array<Gain, voice_count>& gains,
+    std::array<Voice, voice_count>& inVoices,
     Mixer<voice_count>& mixer
 ) {
-    // Stable compile-time IDs for manager, voices and mixer
-    constexpr std::size_t mgr_id = 8000;
-    constexpr std::size_t voice_base_id = 10000;
-    constexpr std::size_t voice_id_stride = 10;
-    constexpr std::size_t osc_offset = 0;
-    constexpr std::size_t env_offset = 1;
-    constexpr std::size_t gain_offset = 2;
-    constexpr std::size_t mixer_id = 9000;
 
-    // Single templated lambda that builds the graph for the given index sequence
-    auto build_impl = [&]<std::size_t... I>(std::index_sequence<I...>) {
-        auto mgr_node = ugraph::make_node<mgr_id>(voiceMgr);
+    auto voiceMgrN = ugraph::make_node<__COUNTER__>(voiceMgr);
 
-        auto osc_nodes = std::make_tuple(ugraph::make_node<voice_base_id + (I * voice_id_stride) + osc_offset>(oscillators[I])...);
-        auto env_nodes = std::make_tuple(ugraph::make_node<voice_base_id + (I * voice_id_stride) + env_offset>(envelopes[I])...);
-        auto gain_nodes = std::make_tuple(ugraph::make_node<voice_base_id + (I * voice_id_stride) + gain_offset>(gains[I])...);
+    auto voiceN1 = ugraph::make_node<__COUNTER__>(inVoices[0]);
+    auto voiceN2 = ugraph::make_node<__COUNTER__>(inVoices[1]);
+    auto voiceN3 = ugraph::make_node<__COUNTER__>(inVoices[2]);
+    auto voiceN4 = ugraph::make_node<__COUNTER__>(inVoices[3]);
 
-        // mixer node
-        auto mix_node = ugraph::make_node<mixer_id>(mixer);
+    auto mixerN = ugraph::make_node<__COUNTER__>(mixer);
 
-        // edges: manager outputs -> oscillator/env inputs
-        auto mgr_osc_edges = std::make_tuple((mgr_node.template output<Trigger, I>() >> std::get<I>(osc_nodes).template input<Trigger>())...);
-        auto mgr_env_edges = std::make_tuple((mgr_node.template output<Trigger, I>() >> std::get<I>(env_nodes).template input<Trigger>())...);
+    return ugraph::Graph(
 
-        // edges: osc + env -> gain
-        auto voice_audio_edges = std::make_tuple((std::get<I>(osc_nodes).template output<AudioBuff>() >> std::get<I>(gain_nodes).template input<AudioBuff>())...);
-        auto voice_env_edges = std::make_tuple((std::get<I>(env_nodes).template output<float>() >> std::get<I>(gain_nodes).template input<float>())...);
+        triggers | voiceMgrN.input<std::vector<Trigger>>(),
 
-        // edges: gain outputs -> mixer inputs
-        auto mix_edges = std::make_tuple((std::get<I>(gain_nodes).template output<AudioBuff>() >> mix_node.template input<AudioBuff, I>())...);
+        voiceMgrN.output<Trigger, 0>() >> voiceN1.input<Trigger>(),
+        voiceMgrN.output<Trigger, 1>() >> voiceN2.input<Trigger>(),
+        voiceMgrN.output<Trigger, 2>() >> voiceN3.input<Trigger>(),
+        voiceMgrN.output<Trigger, 3>() >> voiceN4.input<Trigger>(),
 
-        auto io_edges = std::make_tuple(
-            triggers | mgr_node.template input<std::vector<Trigger>>(),
-            mix_node.template output<AudioBuff>() | outputBuffer
-        );
+        voiceN1.output<AudioBuff>() >> mixerN.input<AudioBuff, 0>(),
+        voiceN2.output<AudioBuff>() >> mixerN.input<AudioBuff, 1>(),
+        voiceN3.output<AudioBuff>() >> mixerN.input<AudioBuff, 2>(),
+        voiceN4.output<AudioBuff>() >> mixerN.input<AudioBuff, 3>(),
 
-        auto edges = std::tuple_cat(io_edges, mgr_osc_edges, mgr_env_edges, voice_audio_edges, voice_env_edges, mix_edges);
+        mixerN.output<AudioBuff>() | outputBuffer
 
-        return std::apply([] (auto const&... es) { return ugraph::Graph(es...); }, edges);
-    };
+    );
 
-    return build_impl(std::make_index_sequence<voice_count>{});
 }
 
 struct Synth {
-
-    static constexpr std::size_t manager_node_id = 8000;
-    static constexpr std::size_t mixer_node_id = 9000;
 
     Synth() {
         // Reserve triggers to avoid heap allocations on the audio thread
         mTriggers.reserve(128);
 
-        initAudioBuff();
+        for (auto& v : mVoices) {
+            v.getGraph().init(mVoiceData);
+        }
+    }
 
-        print();
+    void setBufferSize(std::size_t inBuffSize) {
+
+        auto& data = mGraph.graph_data();
+
+        for (std::size_t i = 0; i < mSynthBufferStorage.size(); i++) {
+            mSynthBufferStorage[i].resize(inBuffSize);
+            data.slot<AudioBuff>(i) = { mSynthBufferStorage[i].data(), inBuffSize };
+        }
+
+        for (std::size_t i = 0; i < mVoiceBufferStorage.size(); i++) {
+            mVoiceBufferStorage[i].resize(inBuffSize);
+            mVoiceData.slot<AudioBuff>(i) = { mVoiceBufferStorage[i].data(), inBuffSize };
+        }
+
     }
 
     void addNote(uint8_t noteNumber, uint8_t velocity, bool state) {
@@ -86,8 +82,6 @@ struct Synth {
     void process(float* output, std::size_t size) {
 
         mOutputBuffer = { output, size };
-
-        initAudioBuff(size);
 
         mGraph.for_each(
             [] (auto& n, auto& ctx) {
@@ -100,36 +94,17 @@ struct Synth {
 
     void print() {
         mGraph.print(std::cout);
+        mVoices[0].getGraph().print(std::cout);
     }
 
 private:
 
-    void initAudioBuff(std::size_t size = max_buffer_size) {
-
-        // Clamp requested size to avoid out-of-bounds on fixed storage
-        if (size > max_buffer_size) {
-            size = max_buffer_size;
-        }
-
-        if (size == mPrevBufferSize) {
-            return;
-        }
-
-        mPrevBufferSize = size;
-
-        for (std::size_t i = 0; i < mSynthBufferStorage.size(); i++) {
-            mGraph.graph_data().template slot<AudioBuff>(i) = { mSynthBufferStorage[i].data(), size };
-        }
-
-    }
-
-    static constexpr std::size_t voice_count = 4;
-
+    std::array<Voice, voice_count> mVoices;
     VoiceManager<voice_count> mVoiceMgr;
-    std::array<Oscillator, voice_count> mOscillators;
-    std::array<EnvelopeGenerator, voice_count> mEnvelopes;
-    std::array<Gain, voice_count> mGains;
     Mixer<voice_count> mMixer;
+
+    std::vector<Trigger> mTriggers;
+    AudioBuff mOutputBuffer;
 
     using synth_graph_t =
         decltype(
@@ -137,24 +112,29 @@ private:
                 std::declval<std::vector<Trigger>&>(),
                 std::declval<AudioBuff&>(),
                 std::declval<VoiceManager<voice_count>&>(),
-                std::declval<std::array<Oscillator, voice_count>&>(),
-                std::declval<std::array<EnvelopeGenerator, voice_count>&>(),
-                std::declval<std::array<Gain, voice_count>&>(),
+                std::declval<std::array<Voice, voice_count>&>(),
                 std::declval<Mixer<voice_count>&>()
             )
             );
 
-    static constexpr auto synth_buffer_count = synth_graph_t::graph_data_t::template count<AudioBuff>();
-    static constexpr uint32_t max_buffer_size = 1024;
-    using buffer_t = std::array<float, max_buffer_size>;
+    static constexpr auto synth_buffer_count =
+        synth_graph_t::graph_data_t::template count<AudioBuff>();
 
-    std::array<buffer_t, synth_buffer_count> mSynthBufferStorage;
+    std::array<std::vector<float>, synth_buffer_count> mSynthBufferStorage {};
 
-    std::vector<Trigger> mTriggers;
+    static constexpr auto voice_buffer_count =
+        Voice::graph_t::graph_data_t::template count<AudioBuff>();
 
-    AudioBuff mOutputBuffer;
+    std::array<std::vector<float>, voice_buffer_count> mVoiceBufferStorage {};
 
-    synth_graph_t mGraph = makeGraph(mTriggers, mOutputBuffer, mVoiceMgr, mOscillators, mEnvelopes, mGains, mMixer);
+    Voice::graph_t::graph_data_t mVoiceData;
 
-    std::size_t mPrevBufferSize = 0;
+    synth_graph_t mGraph = makeGraph(
+        mTriggers,
+        mOutputBuffer,
+        mVoiceMgr,
+        mVoices,
+        mMixer
+    );
+
 };
