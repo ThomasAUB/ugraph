@@ -1,60 +1,82 @@
 #pragma once
 
-#include <cstdint>
-#include <array>
 #include "ugraph.hpp"
+#include "graph_helper.hpp"
+
+#include "audio_buffer.hpp"
+#include "envelope_generator.hpp"
+#include "gain.hpp"
 #include "mixer.hpp"
 #include "oscillator.hpp"
-#include "audio_buffer.hpp"
 #include "trigger.hpp"
-#include <cmath>
-#include "gain.hpp"
-#include "envelope_generator.hpp"
 
+namespace synth_example {
 
-enum eVoiceNodes {
-    eOsc,
-    eEnv,
-    eGain
-};
+    static auto makeVoiceGraph(
+        Trigger& trigger,
+        Oscillator& osc,
+        EnvelopeGenerator& env,
+        Gain& gain,
+        AudioBuff& outBuff
+    ) {
 
-static auto makeGraph(Oscillator& osc, EnvelopeGenerator& env, Gain& gain) {
+        auto oscillatorNode = ugraph::make_node<__COUNTER__>(osc);
+        auto envelopeNode = ugraph::make_node<__COUNTER__>(env);
+        auto gainNode = ugraph::make_node<__COUNTER__>(gain);
 
-    auto oscN = ugraph::make_node<eOsc>(osc);
-    auto envN = ugraph::make_node<eEnv>(env);
-    auto gainN = ugraph::make_node<eGain>(gain);
+        return ugraph::ExternalDataGraph(
+            trigger | oscillatorNode.input<Trigger>(),
+            trigger | envelopeNode.input<Trigger>(),
+            oscillatorNode.output<AudioBuff>() >> gainNode.input<AudioBuff>(),
+            envelopeNode.output<float>() >> gainNode.input<float>(),
+            gainNode.output<AudioBuff>() | outBuff
+        );
+    }
 
-    return ugraph::Graph(
-        oscN.output<AudioBuff>() >> gainN.input<AudioBuff>(),
-        envN.output<float>() >> gainN.input<float>()
-    );
-}
+    struct Voice {
 
-struct Voice {
+        using Manifest = ugraph::Manifest<
+            ugraph::IO<AudioBuff, 0, 1>,
+            ugraph::IO<Trigger, 1, 0>
+        >;
 
-    using graph_t =
-        decltype(
-            makeGraph(
-                std::declval<Oscillator&>(),
-                std::declval<EnvelopeGenerator&>(),
-                std::declval<Gain&>()
-            )
+        using graph_helper_t = GraphHelper<makeVoiceGraph>;
+        using graph_t = graph_helper_t::graph_t;
+        using graph_data_t = graph_helper_t::graph_data_t;
+
+        graph_t& getGraph() {
+            return mGraph;
+        }
+
+        void process(ugraph::Context<Manifest>& ctx) {
+            mOutput = ctx.output<AudioBuff>();
+            mTrigger = ctx.input<Trigger>();
+
+            mGraph.for_each(
+                [] (auto& node, auto& graphCtx) {
+                    node.process(graphCtx);
+                }
             );
+        }
 
-    graph_t& getGraph() {
-        return mGraph;
-    }
+    private:
 
-    void print() {
-        mGraph.print(std::cout);
-    }
+        Oscillator mOscillator;
+        EnvelopeGenerator mEnv;
+        Gain mGain;
 
-private:
+        Trigger mTrigger;
+        AudioBuff mOutput;
 
-    Oscillator mOscillator;
-    EnvelopeGenerator mEnv;
-    Gain mGain;
+        graph_t mGraph = makeVoiceGraph(
+            mTrigger,
+            mOscillator,
+            mEnv,
+            mGain,
+            mOutput
+        );
+    };
 
-    graph_t mGraph = makeGraph(mOscillator, mEnv, mGain);
+} // namespace synth_example
 
-};
+using synth_example::Voice;
