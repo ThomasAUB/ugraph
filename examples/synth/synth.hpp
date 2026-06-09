@@ -5,13 +5,15 @@
 #include <vector>
 #include <iostream>
 
+#include "graph_helper.hpp"
+
 #include "voice_manager.hpp"
 #include "voice.hpp"
 #include "mixer.hpp"
 
 static constexpr std::size_t voice_count = 4;
 
-static auto makeGraph(
+static auto makeSynthGraph(
     std::vector<Trigger>& triggers,
     AudioBuff& outputBuffer,
     VoiceManager<voice_count>& voiceMgr,
@@ -106,30 +108,22 @@ private:
     std::vector<Trigger> mTriggers;
     AudioBuff mOutputBuffer;
 
-    using synth_graph_t =
-        decltype(
-            makeGraph(
-                std::declval<std::vector<Trigger>&>(),
-                std::declval<AudioBuff&>(),
-                std::declval<VoiceManager<voice_count>&>(),
-                std::declval<std::array<Voice, voice_count>&>(),
-                std::declval<Mixer<voice_count>&>()
-            )
-            );
+    using graph_helper_t = GraphHelper<makeSynthGraph>;
+    using synth_graph_t = graph_helper_t::graph_t;
 
-    static constexpr auto synth_buffer_count =
-        synth_graph_t::graph_data_t::template count<AudioBuff>();
+    std::array<
+        std::vector<float>,
+        synth_graph_t::graph_data_t::count<AudioBuff>()
+    > mSynthBufferStorage {};
 
-    std::array<std::vector<float>, synth_buffer_count> mSynthBufferStorage {};
+    std::array<
+        std::vector<float>,
+        Voice::graph_data_t::count<AudioBuff>()
+    > mVoiceBufferStorage {};
 
-    static constexpr auto voice_buffer_count =
-        Voice::graph_t::graph_data_t::template count<AudioBuff>();
+    Voice::graph_data_t mVoiceData;
 
-    std::array<std::vector<float>, voice_buffer_count> mVoiceBufferStorage {};
-
-    Voice::graph_t::graph_data_t mVoiceData;
-
-    synth_graph_t mGraph = makeGraph(
+    synth_graph_t mGraph = makeSynthGraph(
         mTriggers,
         mOutputBuffer,
         mVoiceMgr,

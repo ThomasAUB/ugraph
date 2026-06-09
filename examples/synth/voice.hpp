@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ugraph.hpp"
+#include "graph_helper.hpp"
+
 #include "audio_buffer.hpp"
 #include "envelope_generator.hpp"
 #include "gain.hpp"
@@ -8,7 +10,8 @@
 #include "oscillator.hpp"
 #include "trigger.hpp"
 
-static auto makeGraph(
+
+static auto makeVoiceGraph(
     Trigger& trigger,
     Oscillator& osc,
     EnvelopeGenerator& env,
@@ -36,16 +39,9 @@ struct Voice {
         ugraph::IO<Trigger, 1, 0>
     >;
 
-    using graph_t =
-        decltype(
-            makeGraph(
-                std::declval<Trigger&>(),
-                std::declval<Oscillator&>(),
-                std::declval<EnvelopeGenerator&>(),
-                std::declval<Gain&>(),
-                std::declval<AudioBuff&>()
-            )
-            );
+    using graph_helper_t = GraphHelper<makeVoiceGraph>;
+    using graph_t = typename graph_helper_t::graph_t;
+    using graph_data_t = typename graph_helper_t::graph_data_t;
 
     graph_t& getGraph() {
         return mGraph;
@@ -72,7 +68,7 @@ private:
     Trigger mTrigger;
     AudioBuff mOutput;
 
-    graph_t mGraph = makeGraph(
+    graph_t mGraph = makeVoiceGraph(
         mTrigger,
         mOscillator,
         mEnv,
