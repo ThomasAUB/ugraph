@@ -7,9 +7,11 @@
 
 struct Gain {
 
+    struct Parameter {};
+
     using Manifest = ugraph::Manifest<
         ugraph::IO<AudioBuff, 1, 1>,
-        ugraph::IO<float, 1, 0>
+        ugraph::TaggedIO<Parameter, float, 1, 0>
     >;
 
     void process(ugraph::Context<Manifest>& ctx) {
@@ -18,7 +20,7 @@ struct Gain {
         auto& in = ctx.template input<AudioBuff>();
         const auto size = out.size();
 
-        const auto gain = ctx.template input<float>();
+        const auto gain = ctx.template input<Parameter>();
 
         const auto eps = 1e-8f;
         const auto s = static_cast<float>(size);
