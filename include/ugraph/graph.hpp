@@ -104,6 +104,10 @@ namespace ugraph {
 
     public:
 
+        static constexpr bool has_unique_input_connections() {
+            return traits::has_unique_input_connections();
+        }
+
         using topology_type = topology_t;
         using Manifest = manifest_t;
         using vertex_types_list = typename topology_t::vertex_types_list;
@@ -160,6 +164,11 @@ namespace ugraph {
 
         constexpr ExternalDataGraph(const edges_t&... es) :
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
+            static_assert(
+                traits::has_unique_input_connections(),
+                "An input port is connected more than once"
+                );
+
             (process_binding_fn(es, this), ...);
 
             static_assert(

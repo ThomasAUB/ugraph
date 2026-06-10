@@ -336,6 +336,35 @@ namespace ugraph::detail {
                 has_explicit_output_binding_impl<spec_t, VID, PORT, detail::type_list<Rest...>>::value;
         };
 
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename Edge, bool IsDataBinding>
+        struct input_edge_match_impl : std::false_type {};
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename Edge>
+        struct input_edge_match_impl<spec_t, VID, PORT, Edge, false>
+            : std::bool_constant<
+            (detail::edge_traits<Edge>::dst_id == VID) &&
+            (detail::edge_traits<Edge>::dst_port_index == PORT) &&
+            std::is_same_v<typename detail::edge_traits<Edge>::dst_port_t::spec_type, spec_t>
+            > {};
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename Edge>
+        struct input_edge_match : input_edge_match_impl<spec_t, VID, PORT, Edge, detail::is_data_binding<Edge>::value> {};
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename EdgeList>
+        struct input_connection_count_impl;
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT>
+        struct input_connection_count_impl<spec_t, VID, PORT, detail::type_list<>>
+            : std::integral_constant<std::size_t, 0> {};
+
+        template<typename spec_t, std::size_t VID, std::size_t PORT, typename E0, typename... Rest>
+        struct input_connection_count_impl<spec_t, VID, PORT, detail::type_list<E0, Rest...>>
+            : std::integral_constant<
+                std::size_t,
+                (input_edge_match<spec_t, VID, PORT, E0>::value || input_binding_match<spec_t, VID, PORT, E0>::value ? 1u : 0u) +
+                input_connection_count_impl<spec_t, VID, PORT, detail::type_list<Rest...>>::value
+            > {};
+
         template<typename spec_t, std::size_t VID, std::size_t PORT, typename EdgeList>
         struct input_edge_key_impl;
 
@@ -418,6 +447,37 @@ namespace ugraph::detail {
         static constexpr bool has_explicit_output_binding_for_spec() {
             constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
             return has_explicit_output_binding_impl<spec_t, vid, PortIndex, all_edge_types_list>::value;
+        }
+
+        template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
+        static constexpr std::size_t input_connection_count_for_spec() {
+            constexpr std::size_t vid = topology_t::template id_at<NodeIndex>();
+            return input_connection_count_impl<spec_t, vid, PortIndex, all_edge_types_list>::value;
+        }
+
+        template<std::size_t NodeIndex, typename spec_t, std::size_t... PortIndices>
+        static constexpr bool spec_inputs_unique_impl(std::index_sequence<PortIndices...>) {
+            return ((input_connection_count_for_spec<spec_t, NodeIndex, PortIndices>() <= 1) && ...);
+        }
+
+        template<std::size_t NodeIndex, std::size_t... SpecIndices>
+        static constexpr bool node_inputs_unique_impl(std::index_sequence<SpecIndices...>) {
+            using node_manifest = typename node_type_at<NodeIndex>::module_type::Manifest;
+            return ([] {
+                using spec_t = typename node_manifest::template spec_at<SpecIndices>;
+                return spec_inputs_unique_impl<NodeIndex, spec_t>(std::make_index_sequence<spec_t::input_count>{});
+            }() && ...);
+        }
+
+        template<std::size_t... NodeIndices>
+        static constexpr bool has_unique_input_connections_impl(std::index_sequence<NodeIndices...>) {
+            return (node_inputs_unique_impl<NodeIndices>(
+                std::make_index_sequence<node_type_at<NodeIndices>::module_type::Manifest::spec_count>{}
+            ) && ...);
+        }
+
+        static constexpr bool has_unique_input_connections() {
+            return has_unique_input_connections_impl(std::make_index_sequence<topology_t::size()>{});
         }
 
         template<typename spec_t, std::size_t NodeIndex, std::size_t PortIndex>
