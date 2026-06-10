@@ -108,6 +108,10 @@ namespace ugraph {
             return traits::has_unique_input_connections();
         }
 
+        static constexpr bool has_valid_output_connections() {
+            return traits::has_valid_output_connections();
+        }
+
         using topology_type = topology_t;
         using Manifest = manifest_t;
         using vertex_types_list = typename topology_t::vertex_types_list;
@@ -167,6 +171,11 @@ namespace ugraph {
             static_assert(
                 traits::has_unique_input_connections(),
                 "An input port is connected more than once"
+                );
+
+            static_assert(
+                traits::has_valid_output_connections(),
+                "An output port cannot be both connected to graph inputs and bound to external data"
                 );
 
             (process_binding_fn(es, this), ...);

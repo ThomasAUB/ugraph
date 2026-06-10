@@ -91,3 +91,34 @@ TEST_CASE("graph rejects duplicate input connections at compile time") {
     CHECK(valid_graph_t::has_unique_input_connections());
     CHECK(!invalid_graph_t::has_unique_input_connections());
 }
+
+TEST_CASE("graph rejects output binding mixed with internal connections at compile time") {
+
+    struct Source {
+        using Manifest = ugraph::Manifest<
+            ugraph::IO<int, 1, 1>
+        >;
+    };
+
+    struct Sink {
+        using Manifest = ugraph::Manifest<
+            ugraph::IO<int, 1, 0>
+        >;
+    };
+
+    using source_node_t = decltype(ugraph::make_node<20>(std::declval<Source&>()));
+    using sink_node_t = decltype(ugraph::make_node<21>(std::declval<Sink&>()));
+    using internal_edge_t = std::pair<
+        typename source_node_t::template OutputPort<int, 0>,
+        typename sink_node_t::template InputPort<int, 0>
+    >;
+    using output_bind_t = ugraph::OutDataBind<int, typename source_node_t::template OutputPort<int, 0>>;
+    using valid_graph_t = ugraph::ExternalDataGraph<internal_edge_t>;
+    using invalid_graph_t = ugraph::ExternalDataGraph<internal_edge_t, output_bind_t>;
+
+    static_assert(valid_graph_t::has_valid_output_connections(), "Internal output fanout should remain valid");
+    static_assert(!invalid_graph_t::has_valid_output_connections(), "Output cannot be internally connected and externally bound");
+
+    CHECK(valid_graph_t::has_valid_output_connections());
+    CHECK(!invalid_graph_t::has_valid_output_connections());
+}

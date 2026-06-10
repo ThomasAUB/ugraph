@@ -371,7 +371,7 @@ TEST_CASE("module with inner external data graph keeps bindings to its own membe
     CHECK(out == 42);
 }
 
-TEST_CASE("graph construction preserves explicit external overrides on internally connected ports") {
+TEST_CASE("graph output can fan out to several module inputs") {
 
     struct Source {
         using Manifest = ugraph::Manifest<ugraph::IO<int, 1, 1>>;
@@ -382,37 +382,32 @@ TEST_CASE("graph construction preserves explicit external overrides on internall
     };
 
     struct Sink {
-        using Manifest = ugraph::Manifest<ugraph::IO<int, 1, 1>>;
+        using Manifest = ugraph::Manifest<ugraph::IO<int, 1, 0>>;
 
         void process(ugraph::Context<Manifest>& ctx) {
-            ctx.output<int>() = ctx.input<int>() + 1;
+            value = ctx.input<int>() + 1;
         }
+
+        int value = 0;
     };
 
     using source_node_t = decltype(ugraph::make_node<525>(std::declval<Source&>()));
     using sink_node_t = decltype(ugraph::make_node<526>(std::declval<Sink&>()));
-    using source_output_bind_t = ugraph::OutDataBind<int, typename source_node_t::template OutputPort<int, 0>>;
-    using sink_input_bind_t = ugraph::InDataBind<int, typename sink_node_t::template InputPort<int, 0>>;
 
     Source source;
-    Sink sink;
+    Sink sink1;
+    Sink sink2;
     int input = 7;
-    int bridge = 0;
-    int output = 0;
 
     auto sourceNode = ugraph::make_node<525>(source);
-    auto sinkNode = ugraph::make_node<526>(sink);
+    auto sinkNode1 = ugraph::make_node<526>(sink1);
+    auto sinkNode2 = ugraph::make_node<527>(sink2);
 
     ugraph::Graph graph(
         input | sourceNode.input<int>(),
-        sourceNode.output<int>() >> sinkNode.input<int>(),
-        sourceNode.output<int>() | bridge,
-        bridge | sinkNode.input<int>(),
-        sinkNode.output<int>() | output
+        sourceNode.output<int>() >> sinkNode1.input<int>(),
+        sourceNode.output<int>() >> sinkNode2.input<int>()
     );
-
-    CHECK(graph.template binding_ptr<source_output_bind_t>() == static_cast<const void*>(&bridge));
-    CHECK(graph.template binding_ptr<sink_input_bind_t>() == static_cast<const void*>(&bridge));
 
     graph.for_each(
         [] (auto& module, auto& ctx) {
@@ -420,7 +415,8 @@ TEST_CASE("graph construction preserves explicit external overrides on internall
         }
     );
 
-    CHECK(output == 8);
+    CHECK(sink1.value == 8);
+    CHECK(sink2.value == 8);
 }
 
 TEST_CASE("std array construction preserves nested external graph bindings") {
