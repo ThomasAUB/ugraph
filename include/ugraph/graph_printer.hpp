@@ -156,21 +156,47 @@ namespace ugraph {
         template<typename edge_t, typename = void>
         struct printer_edge_label {
             static constexpr bool available = false;
-            static constexpr std::string_view value() { return {}; }
+            template<typename stream_t>
+            static void print(stream_t&) {}
         };
 
         template<typename edge_t>
-        struct printer_edge_label<edge_t, std::void_t<typename detail::edge_traits<edge_t>::src_port_t::spec_type>> {
-            using spec_t = typename detail::edge_traits<edge_t>::src_port_t::spec_type;
-            using label_t = std::conditional_t<detail::io_traits<spec_t>::is_tagged, typename detail::io_traits<spec_t>::tag, typename detail::io_traits<spec_t>::type>;
+        struct printer_edge_label<edge_t, std::void_t<
+            typename detail::edge_traits<edge_t>::src_port_t::spec_type,
+            typename detail::edge_traits<edge_t>::dst_port_t::spec_type
+            >> {
+            using src_spec_t = typename detail::edge_traits<edge_t>::src_port_t::spec_type;
+            using dst_spec_t = typename detail::edge_traits<edge_t>::dst_port_t::spec_type;
+            using src_traits_t = detail::io_traits<src_spec_t>;
+            using dst_traits_t = detail::io_traits<dst_spec_t>;
 
             static constexpr bool available = true;
-            static constexpr std::string_view value() { return type_name<label_t>(); }
+
+            template<typename stream_t>
+            static void print(stream_t& stream) {
+                if constexpr (src_traits_t::is_tagged && dst_traits_t::is_tagged) {
+                    stream << type_name<typename src_traits_t::tag>();
+                    if constexpr (!std::is_same_v<typename src_traits_t::tag, typename dst_traits_t::tag>) {
+                        stream << " to " << type_name<typename dst_traits_t::tag>();
+                    }
+                    stream << ": " << type_name<typename src_traits_t::type>();
+                }
+                else if constexpr (src_traits_t::is_tagged) {
+                    stream << type_name<typename src_traits_t::tag>() << ": " << type_name<typename src_traits_t::type>();
+                }
+                else if constexpr (dst_traits_t::is_tagged) {
+                    stream << type_name<typename dst_traits_t::tag>() << ": " << type_name<typename src_traits_t::type>();
+                }
+                else {
+                    stream << type_name<typename src_traits_t::type>();
+                }
+            }
         };
 
         template<typename edge_t, typename = void>
         struct printer_binding_label {
-            static constexpr std::string_view value() { return {}; }
+            template<typename stream_t>
+            static void print(stream_t&) {}
         };
 
         template<typename edge_t>
@@ -183,12 +209,21 @@ namespace ugraph {
             template<typename port_t>
             struct label_type<port_t, std::void_t<typename port_t::spec_type>> {
                 using spec_t = typename port_t::spec_type;
-                using type = std::conditional_t<detail::io_traits<spec_t>::is_tagged, typename detail::io_traits<spec_t>::tag, typename detail::io_traits<spec_t>::type>;
+                using type = typename detail::io_traits<spec_t>::type;
+                using tag = typename detail::io_traits<spec_t>::tag;
+                static constexpr bool is_tagged = detail::io_traits<spec_t>::is_tagged;
             };
 
             using label_t = typename label_type<typename binding_traits<edge_t>::port_type>::type;
+            using port_label_t = label_type<typename binding_traits<edge_t>::port_type>;
 
-            static constexpr std::string_view value() { return type_name<label_t>(); }
+            template<typename stream_t>
+            static void print(stream_t& stream) {
+                if constexpr (port_label_t::is_tagged) {
+                    stream << type_name<typename port_label_t::tag>() << ": ";
+                }
+                stream << type_name<label_t>();
+            }
         };
 
         template<typename stream_t>
@@ -231,11 +266,13 @@ namespace ugraph {
                 stream << edge.first << " -->";
                 if constexpr (printer_edge_label<edge_t>::available) {
                     if (inShowLinkTypes) {
-                        stream << "|" << printer_edge_label<edge_t>::value() << "|";
+                        stream << "|";
+                        printer_edge_label<edge_t>::print(stream);
+                        stream << "|";
                     }
                 }
                 stream << " " << edge.second << "\n";
-            }()), ...);
+                }()), ...);
         }
 
         template<typename graph_t, typename stream_t>
@@ -249,13 +286,13 @@ namespace ugraph {
         auto make_binding_ptrs_impl(const graph_t& graph, std::index_sequence<I...>) {
             using edge_list_t = typename printer_all_edge_types<std::decay_t<graph_t>>::type;
             return std::array<const void*, sizeof...(I)> {
-                ([](const graph_t& currentGraph) -> const void* {
+                ([] (const graph_t& currentGraph) -> const void* {
                     using edge_t = typename detail::type_list_at<I, edge_list_t>::type;
                     if constexpr (detail::is_data_binding<edge_t>::value) {
                         return currentGraph.template binding_ptr<edge_t>();
                     }
                     return nullptr;
-                }(graph))...
+                    }(graph))...
             };
         }
 
@@ -329,7 +366,7 @@ namespace ugraph {
                         stream << "(( ))\n";
                     }
                 }
-            }()), ...);
+                }()), ...);
         }
 
         template<typename graph_t, typename stream_t, typename binding_ptrs_t>
@@ -348,7 +385,9 @@ namespace ugraph {
             if constexpr (is_output_binding) {
                 stream << node_id << " -->";
                 if (inShowLinkTypes) {
-                    stream << "|" << printer_binding_label<edge_t>::value() << "|";
+                    stream << "|";
+                    printer_binding_label<edge_t>::print(stream);
+                    stream << "|";
                 }
                 stream << " ";
                 print_binding_node_id(stream, bindingPtrs, bindingEdgeIndex);
@@ -358,7 +397,9 @@ namespace ugraph {
                 print_binding_node_id(stream, bindingPtrs, bindingEdgeIndex);
                 stream << " -->";
                 if (inShowLinkTypes) {
-                    stream << "|" << printer_binding_label<edge_t>::value() << "|";
+                    stream << "|";
+                    printer_binding_label<edge_t>::print(stream);
+                    stream << "|";
                 }
                 stream << " " << node_id << "\n";
             }
@@ -373,7 +414,7 @@ namespace ugraph {
                 if constexpr (detail::is_data_binding<edge_t>::value) {
                     print_binding_edge<edge_t>(stream, bindingPtrs, I, inShowLinkTypes);
                 }
-            }()), ...);
+                }()), ...);
         }
 
         template<typename graph_t, typename stream_t, typename binding_ptrs_t>

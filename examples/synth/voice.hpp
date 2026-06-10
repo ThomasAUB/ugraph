@@ -28,7 +28,7 @@ namespace synth_example {
             trigger | oscillatorNode.input<Trigger>(),
             trigger | envelopeNode.input<Trigger>(),
             oscillatorNode.output<AudioBuff>() >> gainNode.input<AudioBuff>(),
-            envelopeNode.output<float>() >> gainNode.input<float>(),
+            envelopeNode.output<float>() >> gainNode.input<Gain::Parameter>(),
             gainNode.output<AudioBuff>() | outBuff
         );
     }

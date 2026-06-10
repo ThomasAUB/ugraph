@@ -146,7 +146,7 @@ TEST_CASE("graph print test shows tagged io names") {
 
     CHECK(out.find("201(\"PrinterSource\")") != std::string::npos);
     CHECK(out.find("202(\"PrinterSink\")") != std::string::npos);
-    CHECK(out.find("201 -->|PrinterTagA| 202") != std::string::npos);
+    CHECK(out.find("201 -->|PrinterTagA: int| 202") != std::string::npos);
 
     dbgPrintGraph(g, "Tagged");
 }
@@ -170,8 +170,40 @@ TEST_CASE("graph print test shows several tagged io names") {
 
     CHECK(out.find("203(\"PrinterMultiSource\")") != std::string::npos);
     CHECK(out.find("204(\"PrinterMultiSink\")") != std::string::npos);
-    CHECK(out.find("203 -->|PrinterTagA| 204") != std::string::npos);
-    CHECK(out.find("203 -->|PrinterTagB| 204") != std::string::npos);
+    CHECK(out.find("203 -->|PrinterTagA: int| 204") != std::string::npos);
+    CHECK(out.find("203 -->|PrinterTagB: float| 204") != std::string::npos);
+
+    dbgPrintGraph(g, "Tagged");
+}
+
+TEST_CASE("graph print test shows source and destination tag names when they differ") {
+    struct PrinterSourceTag {};
+    struct PrinterDestTag {};
+
+    struct TaggedSource {
+        using Manifest = ugraph::Manifest<ugraph::TaggedIO<PrinterSourceTag, int, 0, 1>>;
+    };
+
+    struct TaggedSink {
+        using Manifest = ugraph::Manifest<ugraph::TaggedIO<PrinterDestTag, int, 1, 0>>;
+    };
+
+    TaggedSource sourceModule;
+    TaggedSink sinkModule;
+
+    auto source = ugraph::make_node<205>(sourceModule);
+    auto sink = ugraph::make_node<206>(sinkModule);
+
+    ugraph::Graph g(
+        source.output<PrinterSourceTag>() >> sink.input<PrinterDestTag>()
+    );
+
+    std::ostringstream oss;
+    ugraph::print_graph(g, oss);
+
+    std::string out = oss.str();
+
+    CHECK(out.find("205 -->|PrinterSourceTag to PrinterDestTag: int| 206") != std::string::npos);
 
     dbgPrintGraph(g, "Tagged");
 }
