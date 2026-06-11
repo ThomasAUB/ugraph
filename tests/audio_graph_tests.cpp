@@ -179,7 +179,7 @@ namespace {
         }
 
         graph_data_t& graph_data() {
-            return mGraph.graph_data();
+            return mGraph.data();
         }
 
     private:
@@ -246,7 +246,7 @@ TEST_CASE("audio graph simple chain correctness") {
     std::array<buffer_storage_t2, storage_count> storage;
 
     for (int i = 0; i < storage_count; i++) {
-        g.graph_data().template slot<AudioBuffer>(i) = storage[i];
+        g.data().template slot<AudioBuffer>(i) = storage[i];
     }
 
     g.for_each(
@@ -290,7 +290,7 @@ TEST_CASE("audio graph repeated processing") {
     std::array<buffer_storage_t, storage_count> storage;
 
     for (int i = 0; i < storage_count; i++) {
-        g.graph_data().template slot<AudioBuffer>(i) = storage[i];
+        g.data().template slot<AudioBuffer>(i) = storage[i];
     }
 
     constexpr std::size_t iterations = 2500;
@@ -347,7 +347,7 @@ TEST_CASE("audio graph pipeline vs manual performance ratio") {
     using graph_buffer_storage_t = std::array<float, kBlockSize>;
     std::array<graph_buffer_storage_t, graph_storage_count> gstorage;
     for (std::size_t i = 0; i < graph_storage_count; ++i) {
-        g.graph_data().template slot<AudioBuffer>(i) = gstorage[i];
+        g.data().template slot<AudioBuffer>(i) = gstorage[i];
     }
 
     // Warm-up both paths (also protects against extremely small timings)

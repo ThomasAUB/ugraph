@@ -72,7 +72,7 @@ namespace synth_example {
         }
 
         void setBufferSize(std::size_t inBuffSize) {
-            resizeAudioSlots(mSynthBufferStorage, mGraph.graph_data(), inBuffSize);
+            resizeAudioSlots(mSynthBufferStorage, mGraph.data(), inBuffSize);
             resizeAudioSlots(mVoiceBufferStorage, mVoiceData, inBuffSize);
         }
 

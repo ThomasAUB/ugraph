@@ -174,7 +174,7 @@ auto g = ugraph::Graph(
 
 // Graph-owned storage is initialized during construction.
 // Access the owned storage when you need to seed buffer-backed values.
-auto& graphData = g.graph_data();
+auto& graphData = g.data();
 
 using graph_t = decltype(g);
 static_assert(graph_t::graph_data_t::template count<int>() == 2);
