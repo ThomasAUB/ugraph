@@ -164,8 +164,6 @@ namespace ugraph {
             storage_t mData {};
         };
 
-    public:
-
         constexpr ExternalDataGraph(const edges_t&... es) :
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
             static_assert(
