@@ -470,11 +470,11 @@ namespace ugraph {
             return *this;
         }
 
-        constexpr graph_data_t& graph_data() {
+        constexpr graph_data_t& data() {
             return mGraphData;
         }
 
-        constexpr const graph_data_t& graph_data() const {
+        constexpr const graph_data_t& data() const {
             return mGraphData;
         }
 
