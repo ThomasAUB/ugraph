@@ -55,6 +55,6 @@ struct Gain {
 
 private:
 
-    float mCurrentGain = 0;
+    float mCurrentGain = 0.0f;
 
 };

@@ -53,7 +53,27 @@ namespace ugraph {
     template<typename... ios_t>
     struct Manifest;
 
+
     namespace detail {
+
+        /// Flip IO direction: internal input (0 in, N out) becomes external input (N in, 0 out),
+        /// and internal output (N in, 0 out) becomes external output (0 in, N out).
+        template<typename spec_t>
+        struct flip_io;
+
+        template<typename data_t, std::size_t in, std::size_t out, bool strict>
+        struct flip_io<IO<data_t, in, out, strict>> {
+            using type = IO<data_t, out, in, strict>;
+        };
+
+        template<typename tag_t, typename data_t, std::size_t in, std::size_t out, bool strict>
+        struct flip_io<TaggedIO<tag_t, data_t, in, out, strict>> {
+            using type = TaggedIO<tag_t, data_t, out, in, strict>;
+        };
+
+        template<typename spec_t>
+        using flip_io_t = typename flip_io<spec_t>::type;
+
 
         template<typename io_t>
         struct io_traits {
@@ -123,8 +143,8 @@ namespace ugraph {
         template<typename key_t, typename io_t, typename... rest_t>
         struct io_entry_count<key_t, detail::type_list<io_t, rest_t...>>
             : std::integral_constant<
-                std::size_t,
-                (io_matches_key<key_t, io_t>::value ? 1 : 0) + io_entry_count<key_t, detail::type_list<rest_t...>>::value
+            std::size_t,
+            (io_matches_key<key_t, io_t>::value ? 1 : 0) + io_entry_count<key_t, detail::type_list<rest_t...>>::value
             > {};
 
         template<typename key_t, typename... io_t>
@@ -139,6 +159,20 @@ namespace ugraph {
 
 
     } // namespace detail
+
+    /// @brief Manifest for IO interface of a graph-as-node.
+    /// @tparam Inputs type_list of input IO spec types (from GraphInput nodes)
+    /// @tparam Outputs type_list of output IO spec types (from GraphOutput nodes)
+    template<typename Inputs, typename Outputs>
+    struct IOMifest;
+
+    template<typename... InSpecs, typename... OutSpecs>
+    struct IOMifest<detail::type_list<InSpecs...>, detail::type_list<OutSpecs...>> {
+        using type = Manifest<detail::flip_io_t<InSpecs>..., detail::flip_io_t<OutSpecs>...>;
+    };
+
+    template<typename Inputs, typename Outputs>
+    using iomifest_t = typename IOMifest<Inputs, Outputs>::type;
 
     template<typename... ios_t>
     struct Manifest {
@@ -175,15 +209,13 @@ namespace ugraph {
         template<typename T>
         static constexpr std::size_t input_count() {
             static_assert(contains<T>, "Type not declared in Manifest");
-            using spec = spec_for<T>;
-            return detail::io_traits<spec>::input_count;
+            return (0 + ... + (detail::io_matches_key<T, ios_t>::value ? detail::io_traits<ios_t>::input_count : 0));
         }
 
         template<typename T>
         static constexpr std::size_t output_count() {
             static_assert(contains<T>, "Type not declared in Manifest");
-            using spec = spec_for<T>;
-            return detail::io_traits<spec>::output_count;
+            return (0 + ... + (detail::io_matches_key<T, ios_t>::value ? detail::io_traits<ios_t>::output_count : 0));
         }
 
         template<typename T>
@@ -207,6 +239,7 @@ namespace ugraph {
 
         template<std::size_t I>
         using type_at = typename detail::type_list_at<I, data_types_list>::type;
+
     };
 
 } // namespace ugraph

@@ -4,6 +4,7 @@
 #include <type_traits>
 
 #include "graph_coloring.hpp"
+#include "../graph_io.hpp"
 
 namespace ugraph::detail {
 
@@ -138,20 +139,6 @@ namespace ugraph::detail {
         >;
     };
 
-    template<typename... Lists>
-    struct type_list_concat;
-
-    template<>
-    struct type_list_concat<> { using type = detail::type_list<>; };
-
-    template<typename... Ts>
-    struct type_list_concat<detail::type_list<Ts...>> { using type = detail::type_list<Ts...>; };
-
-    template<typename... A, typename... B, typename... Rest>
-    struct type_list_concat<detail::type_list<A...>, detail::type_list<B...>, Rest...> {
-        using type = typename type_list_concat<detail::type_list<A..., B...>, Rest...>::type;
-    };
-
     template<typename TL>
     struct filter_out_data_bindings;
 
@@ -191,6 +178,8 @@ namespace ugraph::detail {
         using graph_types_list = typename collect_specs_from_typelist<typename topology_t::vertex_types_list>::type;
         using graph_keys_list = typename specs_to_keys<graph_types_list>::type;
         using manifest_t = typename manifest_from_list<graph_types_list>::type;
+        using external_inputs = typename ugraph::external_inputs_t<typename topology_t::vertex_types_list>;
+        using external_outputs = typename ugraph::external_outputs_t<typename topology_t::vertex_types_list>;
         static constexpr std::size_t invalid_index = static_cast<std::size_t>(-1);
 
         static constexpr std::size_t key_count = detail::type_list_size<graph_keys_list>::value;
@@ -360,9 +349,9 @@ namespace ugraph::detail {
         template<typename spec_t, std::size_t VID, std::size_t PORT, typename E0, typename... Rest>
         struct input_connection_count_impl<spec_t, VID, PORT, detail::type_list<E0, Rest...>>
             : std::integral_constant<
-                std::size_t,
-                (input_edge_match<spec_t, VID, PORT, E0>::value || input_binding_match<spec_t, VID, PORT, E0>::value ? 1u : 0u) +
-                input_connection_count_impl<spec_t, VID, PORT, detail::type_list<Rest...>>::value
+            std::size_t,
+            (input_edge_match<spec_t, VID, PORT, E0>::value || input_binding_match<spec_t, VID, PORT, E0>::value ? 1u : 0u) +
+            input_connection_count_impl<spec_t, VID, PORT, detail::type_list<Rest...>>::value
             > {};
 
         template<typename spec_t, std::size_t VID, std::size_t PORT, typename Edge, bool IsDataBinding>
@@ -389,9 +378,9 @@ namespace ugraph::detail {
         template<typename spec_t, std::size_t VID, std::size_t PORT, typename E0, typename... Rest>
         struct output_connection_count_impl<spec_t, VID, PORT, detail::type_list<E0, Rest...>>
             : std::integral_constant<
-                std::size_t,
-                (output_edge_match<spec_t, VID, PORT, E0>::value ? 1u : 0u) +
-                output_connection_count_impl<spec_t, VID, PORT, detail::type_list<Rest...>>::value
+            std::size_t,
+            (output_edge_match<spec_t, VID, PORT, E0>::value ? 1u : 0u) +
+            output_connection_count_impl<spec_t, VID, PORT, detail::type_list<Rest...>>::value
             > {};
 
         template<typename spec_t, std::size_t VID, std::size_t PORT, typename EdgeList>
@@ -501,7 +490,7 @@ namespace ugraph::detail {
             return ([] {
                 using spec_t = typename node_manifest::template spec_at<SpecIndices>;
                 return spec_inputs_unique_impl<NodeIndex, spec_t>(std::make_index_sequence<spec_t::input_count>{});
-            }() && ...);
+                }() && ...);
         }
 
         template<std::size_t... NodeIndices>
@@ -527,7 +516,7 @@ namespace ugraph::detail {
             return ([] {
                 using spec_t = typename node_manifest::template spec_at<SpecIndices>;
                 return spec_outputs_exclusive_impl<NodeIndex, spec_t>(std::make_index_sequence<spec_t::output_count>{});
-            }() && ...);
+                }() && ...);
         }
 
         template<std::size_t... NodeIndices>

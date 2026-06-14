@@ -33,6 +33,7 @@
 #include <utility>
 
 #include "context.hpp"
+#include "graph_io.hpp"
 #include "manifest.hpp"
 #include "topology.hpp"
 #include "graph_printer.hpp"
@@ -113,10 +114,13 @@ namespace ugraph {
         }
 
         using topology_type = topology_t;
-        using Manifest = manifest_t;
         using vertex_types_list = typename topology_t::vertex_types_list;
         using edge_types_list = typename traits::edge_types_list;
         using all_edge_types_list = detail::type_list<edges_t...>;
+        using external_inputs = typename traits::external_inputs;
+        using external_outputs = typename traits::external_outputs;
+        using io_manifest = iomifest_t<external_inputs, external_outputs>;
+        using Manifest = io_manifest;
 
         class graph_data_t {
             using storage_t = decltype(make_graph_data_storage_t(std::make_index_sequence<traits::key_count>{}));
@@ -191,6 +195,54 @@ namespace ugraph {
         template<typename F>
         constexpr void for_each(F&& f) {
             for_each_impl(std::forward<F>(f), std::make_index_sequence<topology_t::size()>{});
+        }
+
+        template<typename ctx_t>
+        constexpr void process(ctx_t& extCtx) {
+            // Bridge external inputs to GraphInput nodes' outputs
+            bridge_inputs_impl(extCtx, std::make_index_sequence<topology_t::size()>{});
+
+            // Process all inner nodes
+            for_each([] (auto& module, auto& ctx) {
+                module.process(ctx);
+                });
+
+            // Bridge GraphOutput nodes' inputs to external outputs
+            bridge_outputs_impl(extCtx, std::make_index_sequence<topology_t::size()>{});
+        }
+
+        template<typename external_ctx_t, std::size_t... I>
+        constexpr void bridge_inputs_impl(external_ctx_t& extCtx, std::index_sequence<I...>) {
+            (
+                [&] {
+                    using module_t = typename node_type_at<I>::module_type;
+                    if constexpr (detail::is_graph_input<module_t>::value) {
+                        using key_t = typename module_t::Manifest::template key_at<0>;
+                        auto& innerCtx = std::get<I>(mContexts);
+                        auto* ptr = innerCtx.template output_ptr<0, key_t>();
+                        if (ptr) {
+                            *ptr = extCtx.template input<key_t>();
+                        }
+                    }
+                }(), ...
+                    );
+        }
+
+        template<typename external_ctx_t, std::size_t... I>
+        constexpr void bridge_outputs_impl(external_ctx_t& extCtx, std::index_sequence<I...>) {
+            (
+                [&] {
+                    using module_t = typename node_type_at<I>::module_type;
+                    if constexpr (detail::is_graph_output<module_t>::value) {
+                        using key_t = typename module_t::Manifest::template key_at<0>;
+                        auto& innerCtx = std::get<I>(mContexts);
+                        auto* ptr = innerCtx.template input_ptr<0, key_t>();
+                        if (ptr) {
+                            extCtx.template output<key_t>() = *ptr;
+                        }
+                    }
+                }(), ...
+                    );
         }
 
         constexpr void init(graph_data_t& graphData) {
@@ -431,6 +483,9 @@ namespace ugraph {
         using typename base_t::vertex_types_list;
         using typename base_t::edge_types_list;
         using typename base_t::all_edge_types_list;
+        using typename base_t::external_inputs;
+        using typename base_t::external_outputs;
+        using typename base_t::io_manifest;
         using typename base_t::graph_data_t;
 
         constexpr Graph(const edges_t&... es) :

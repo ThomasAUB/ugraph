@@ -71,5 +71,19 @@ namespace ugraph::detail {
     template<typename T, typename... Ts>
     struct type_list_prepend<T, type_list<Ts...>> { using type = type_list<T, Ts...>; };
 
+    template<typename... Lists>
+    struct type_list_cat;
+
+    template<>
+    struct type_list_cat<> { using type = type_list<>; };
+
+    template<typename... Ts>
+    struct type_list_cat<type_list<Ts...>> { using type = type_list<Ts...>; };
+
+    template<typename... A, typename... B, typename... Rest>
+    struct type_list_cat<type_list<A...>, type_list<B...>, Rest...> {
+        using type = typename type_list_cat<type_list<A..., B...>, Rest...>::type;
+    };
+
 } // namespace ugraph::detail
 
