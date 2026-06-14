@@ -279,7 +279,7 @@ namespace ugraph {
         template<std::size_t node_index, typename spec_t, typename ctx_t>
         constexpr void init_type(graph_data_t& graphData, ctx_t& ctx) {
             using node_type = node_type_at<node_index>;
-            using node_manifest = typename node_type::module_type::Manifest;;
+            using node_manifest = typename node_type::module_type::Manifest;
 
             constexpr std::size_t in_count = node_manifest::template input_count<spec_t>();
             init_inputs_impl<node_index, spec_t>(graphData, ctx, std::make_index_sequence<in_count>{});
