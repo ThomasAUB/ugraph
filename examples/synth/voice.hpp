@@ -13,32 +13,29 @@
 namespace synth_example {
 
     static auto makeVoiceGraph(
-        Trigger& trigger,
         Oscillator& osc,
         EnvelopeGenerator& env,
-        Gain& gain,
-        AudioBuff& outBuff
+        Gain& gain
     ) {
+
+        auto graphInput = ugraph::graph_io::make_input<__COUNTER__>();
+        auto graphOutput = ugraph::graph_io::make_output<__COUNTER__>();
 
         auto oscillatorNode = ugraph::make_node<__COUNTER__>(osc);
         auto envelopeNode = ugraph::make_node<__COUNTER__>(env);
         auto gainNode = ugraph::make_node<__COUNTER__>(gain);
 
         return ugraph::ExternalDataGraph(
-            trigger | oscillatorNode.input<Trigger>(),
-            trigger | envelopeNode.input<Trigger>(),
+            graphInput.output<Trigger>() >> oscillatorNode.input<Trigger>(),
+            graphInput.output<Trigger>() >> envelopeNode.input<Trigger>(),
             oscillatorNode.output<AudioBuff>() >> gainNode.input<AudioBuff>(),
             envelopeNode.output<float>() >> gainNode.input<Gain::Parameter>(),
-            gainNode.output<AudioBuff>() | outBuff
+            gainNode.output<AudioBuff>() >> graphOutput.input<AudioBuff>()
         );
+
     }
 
     struct Voice {
-
-        using Manifest = ugraph::Manifest<
-            ugraph::IO<AudioBuff, 0, 1>,
-            ugraph::IO<Trigger, 1, 0>
-        >;
 
         using graph_helper_t = GraphHelper<makeVoiceGraph>;
         using graph_t = graph_helper_t::graph_t;
@@ -48,32 +45,16 @@ namespace synth_example {
             return mGraph;
         }
 
-        void process(ugraph::Context<Manifest>& ctx) {
-            mOutput = ctx.output<AudioBuff>();
-            mTrigger = ctx.input<Trigger>();
-
-            mGraph.for_each(
-                [] (auto& node, auto& graphCtx) {
-                    node.process(graphCtx);
-                }
-            );
-        }
-
     private:
 
         Oscillator mOscillator;
         EnvelopeGenerator mEnv;
         Gain mGain;
 
-        Trigger mTrigger;
-        AudioBuff mOutput;
-
         graph_t mGraph = makeVoiceGraph(
-            mTrigger,
             mOscillator,
             mEnv,
-            mGain,
-            mOutput
+            mGain
         );
     };
 
