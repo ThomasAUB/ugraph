@@ -18,6 +18,7 @@ set(TARGET_SRC
     audio_graph_tests.cpp
     manifest_tagged_io_tests.cpp
     graph_tagged_io_tests.cpp
+    graph_io_tests.cpp
 
     compile_time_graph_tests.cpp
 

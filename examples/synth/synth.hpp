@@ -33,10 +33,10 @@ namespace synth_example {
 
         auto voiceMgrNode = ugraph::make_node<__COUNTER__>(voiceMgr);
 
-        auto voiceNode1 = ugraph::make_node<__COUNTER__>(inVoices[0]);
-        auto voiceNode2 = ugraph::make_node<__COUNTER__>(inVoices[1]);
-        auto voiceNode3 = ugraph::make_node<__COUNTER__>(inVoices[2]);
-        auto voiceNode4 = ugraph::make_node<__COUNTER__>(inVoices[3]);
+        auto voiceNode1 = ugraph::make_node<__COUNTER__>(inVoices[0].getGraph());
+        auto voiceNode2 = ugraph::make_node<__COUNTER__>(inVoices[1].getGraph());
+        auto voiceNode3 = ugraph::make_node<__COUNTER__>(inVoices[2].getGraph());
+        auto voiceNode4 = ugraph::make_node<__COUNTER__>(inVoices[3].getGraph());
 
         auto mixerNode = ugraph::make_node<__COUNTER__>(mixer);
 

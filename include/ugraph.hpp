@@ -30,6 +30,7 @@
 #include "ugraph/node.hpp"
 #include "ugraph/dsl.hpp"
 #include "ugraph/graph.hpp"
+#include "ugraph/graph_io.hpp"
 #include "ugraph/topology.hpp"
 #include "ugraph/manifest.hpp"
 #include "ugraph/node_tag.hpp"
