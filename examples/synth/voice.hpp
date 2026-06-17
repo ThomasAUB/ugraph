@@ -41,10 +41,6 @@ namespace synth_example {
         using graph_t = graph_helper_t::graph_t;
         using graph_data_t = graph_helper_t::graph_data_t;
 
-        // The Voice's manifest is deduced from the graph's declared IOs.
-        // This allows Voice to be used as a module in an outer graph.
-        using Manifest = graph_t::io_manifest;
-
         graph_t& getGraph() {
             return mGraph;
         }
