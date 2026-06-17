@@ -230,6 +230,70 @@ g.for_each([](auto& module, auto& ctx){
 });
 ```
 
+### Nested Graphs (GraphInput / GraphOutput)
+
+Use `GraphInput<T>` and `GraphOutput<T>` to define typed entry and exit points for a subgraph, enabling an `ExternalDataGraph` or `Graph` to be treated as a module within an outer graph.
+
+```cpp
+// Build a voice subgraph with typed IO
+auto gIn  = ugraph::graph_io::make_input<__COUNTER__>();   // GraphInput<Trigger>
+auto gOut = ugraph::graph_io::make_output<__COUNTER__>();   // GraphOutput<AudioBuff>
+
+auto voiceGraph = ugraph::Graph(
+    gIn.output<Trigger>()     >> oscNode.input<Trigger>(),
+    gIn.output<Trigger>()     >> envNode.input<Trigger>(),
+    oscNode.output<AudioBuff>() >> gainNode.input<AudioBuff>(),
+    envNode.output<float>()     >> gainNode.input<Gain::Parameter>(),
+    gainNode.output<AudioBuff>() >> gOut.input<AudioBuff>()
+);
+```
+
+The graph's `io_manifest` is automatically derived from its `GraphInput` and `GraphOutput` nodes:
+
+```cpp
+using manifest_t = decltype(voiceGraph)::io_manifest;
+static_assert(manifest_t::input_count<Trigger>() == 1);
+static_assert(manifest_t::output_count<AudioBuff>() == 1);
+```
+
+#### process(ctx) — external context bridging
+
+Call `process(ctx)` with an external `Context` to bridge data through the graph's IO boundary:
+
+```cpp
+ugraph::Context<manifest_t> ctx;
+Trigger trigger{ Trigger::eOn, 64 };
+AudioBuff output;
+
+ctx.set_input_ptr<0, Trigger>(&trigger);
+ctx.set_output_ptr<0, AudioBuff>(&output);
+
+voiceGraph.process(ctx);
+// output now contains the processed audio
+```
+
+`process(ctx)` performs three steps:
+1. Bridges external input data into `GraphInput` nodes' output slots
+2. Runs `for_each` to process all inner modules in topological order
+3. Bridges `GraphOutput` nodes' input slots to external output data
+
+For tag-based IO, use `GraphInputTag<Tag, T>` and `GraphOutputTag<Tag, T>` with `TaggedIO`:
+
+```cpp
+struct TriggerTag {};
+struct AudioTag {};
+
+struct MyModule {
+    using Manifest = ugraph::Manifest<
+        ugraph::TaggedIO<TriggerTag, Trigger, 1, 0>,
+        ugraph::TaggedIO<AudioTag, AudioBuff, 0, 1>
+    >;
+    void process(ugraph::Context<Manifest>& ctx) {
+        ctx.output<AudioTag>() = processTrigger(ctx.input<TriggerTag>());
+    }
+};
+```
+
 ---
 
 ### Graph printing
@@ -319,6 +383,8 @@ These options let you supply or capture data for nodes that are intentionally le
 | Static graph   | `Topology<Edges...>`                   | Ordering, cycle check, visitation     |
 | External-storage graph | `ExternalDataGraph<Edges...>` | Traversal + explicit external storage |
 | Owning runtime graph | `Graph<Edges...>`                | ExternalDataGraph + owned storage     |
+| Graph IO       | `GraphInput<T>`, `GraphOutput<T>`      | Typed subgraph entry/exit points      |
+| Tagged Graph IO| `GraphInputTag<Tag,T>`, `GraphOutputTag<Tag,T>` | Tag-disambiguated subgraph IO |
 
 ---
 

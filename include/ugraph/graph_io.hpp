@@ -71,8 +71,10 @@ namespace ugraph {
         /// Helper: extracts the Manifest spec type from a GraphIO module.
         /// For plain spec: to_manifest_spec<GraphInput<float>> = IO<float,0,1>
         /// For tagged:     to_manifest_spec<GraphInputTag<MyTag,float>> = TaggedIO<MyTag,float,0,1>
+        struct _void_key {};
+
         template<typename T>
-        struct to_manifest_spec;
+        struct to_manifest_spec { using type = ugraph::IO<_void_key, 0, 0, false>; };
 
         template<typename spec_t>
         struct to_manifest_spec<GraphInput<spec_t>> { using type = ugraph::IO<spec_t, 0, 1>; };
@@ -107,6 +109,94 @@ namespace ugraph {
 
         template<typename T>
         using to_manifest_spec_t = typename to_manifest_spec<T>::type;
+
+        namespace detail_port_index {
+
+            template<std::size_t Count, typename key_t, typename List>
+            struct count_matching_inputs;
+
+            template<std::size_t Count, typename key_t>
+            struct count_matching_inputs<Count, key_t, type_list<>> : std::integral_constant<std::size_t, Count> {};
+
+            template<std::size_t Count, typename key_t, typename node_t, typename... rest_t>
+            struct count_matching_inputs<Count, key_t, type_list<node_t, rest_t...>> {
+                using module_t = typename node_t::module_type;
+                static constexpr bool is_match = is_graph_input<module_t>::value &&
+                    std::is_same_v<typename ugraph::detail::io_key<to_manifest_spec_t<module_t>>::type, key_t>;
+                static constexpr std::size_t value = count_matching_inputs<
+                    Count + (is_match ? 1 : 0), key_t, type_list<rest_t...>>::value;
+            };
+
+            template<std::size_t Count, typename key_t, typename List>
+            struct count_matching_outputs;
+
+            template<std::size_t Count, typename key_t>
+            struct count_matching_outputs<Count, key_t, type_list<>> : std::integral_constant<std::size_t, Count> {};
+
+            template<std::size_t Count, typename key_t, typename node_t, typename... rest_t>
+            struct count_matching_outputs<Count, key_t, type_list<node_t, rest_t...>> {
+                using module_t = typename node_t::module_type;
+                static constexpr bool is_match = is_graph_output<module_t>::value &&
+                    std::is_same_v<typename ugraph::detail::io_key<to_manifest_spec_t<module_t>>::type, key_t>;
+                static constexpr std::size_t value = count_matching_outputs<
+                    Count + (is_match ? 1 : 0), key_t, type_list<rest_t...>>::value;
+            };
+
+            template<bool IsInput, std::size_t TargetIndex, typename key_t, typename List>
+            struct port_index_impl;
+
+            template<bool IsInput, std::size_t TargetIndex, typename key_t>
+            struct port_index_impl<IsInput, TargetIndex, key_t, type_list<>> : std::integral_constant<std::size_t, 0> {};
+
+            template<bool IsInput, std::size_t TargetIndex, typename key_t, typename node_t, typename... rest_t>
+            struct port_index_impl<IsInput, TargetIndex, key_t, type_list<node_t, rest_t...>> {
+                using module_t = typename node_t::module_type;
+                static constexpr bool is_gio = IsInput ? is_graph_input<module_t>::value : is_graph_output<module_t>::value;
+                static constexpr bool is_match = is_gio &&
+                    std::is_same_v<typename ugraph::detail::io_key<to_manifest_spec_t<module_t>>::type, key_t>;
+
+                static constexpr std::size_t value =
+                    (TargetIndex == 0) ? 0 :
+                    is_match ? (1 + port_index_impl<IsInput, TargetIndex - 1, key_t, type_list<rest_t...>>::value)
+                             : port_index_impl<IsInput, TargetIndex - 1, key_t, type_list<rest_t...>>::value;
+            };
+
+        }
+
+        template<std::size_t TargetIndex, typename key_t, typename node_types_t>
+        struct graph_input_port_index;
+
+        template<std::size_t TargetIndex, typename key_t, typename... node_types_t>
+        struct graph_input_port_index<TargetIndex, key_t, type_list<node_types_t...>>
+            : detail_port_index::port_index_impl<true, TargetIndex, key_t, type_list<node_types_t...>> {};
+
+        template<std::size_t TargetIndex, typename key_t, typename node_types_t>
+        struct graph_output_port_index;
+
+        template<std::size_t TargetIndex, typename key_t, typename... node_types_t>
+        struct graph_output_port_index<TargetIndex, key_t, type_list<node_types_t...>>
+            : detail_port_index::port_index_impl<false, TargetIndex, key_t, type_list<node_types_t...>> {};
+
+        template<std::size_t TargetIndex, typename key_t, typename node_types_t>
+        struct graph_output_port_index;
+
+        template<std::size_t TargetIndex, typename key_t>
+        struct graph_output_port_index<TargetIndex, key_t, type_list<>> : std::integral_constant<std::size_t, 0> {};
+
+        template<std::size_t TargetIndex, typename key_t, typename node_t, typename... rest_t>
+        struct graph_output_port_index<TargetIndex, key_t, type_list<node_t, rest_t...>> {
+            using module_t = typename node_t::module_type;
+            using spec_t = to_manifest_spec_t<module_t>;
+            using node_key_t = typename ugraph::detail::io_key<spec_t>::type;
+
+            static constexpr std::size_t current_match =
+                (is_graph_output<module_t>::value && std::is_same_v<node_key_t, key_t>) ? 1 : 0;
+
+            static constexpr std::size_t value =
+                (TargetIndex == 0) ? 0 :
+                (current_match > 0 && TargetIndex > 0) ? current_match + graph_output_port_index<TargetIndex - 1, key_t, type_list<rest_t...>>::value :
+                graph_output_port_index<TargetIndex - 1, key_t, type_list<rest_t...>>::value;
+        };
 
     } // namespace detail
 

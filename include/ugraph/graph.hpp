@@ -199,50 +199,12 @@ namespace ugraph {
 
         template<typename ctx_t>
         constexpr void process(ctx_t& extCtx) {
-            // Bridge external inputs to GraphInput nodes' outputs
-            bridge_inputs_impl(extCtx, std::make_index_sequence<topology_t::size()>{});
+            rebind_inputs_from_external(extCtx, all_edge_types_list {}, std::make_index_sequence<topology_t::size()>{});
+            rebind_outputs_to_external(extCtx, all_edge_types_list {}, std::make_index_sequence<topology_t::size()>{});
 
-            // Process all inner nodes
             for_each([] (auto& module, auto& ctx) {
                 module.process(ctx);
                 });
-
-            // Bridge GraphOutput nodes' inputs to external outputs
-            bridge_outputs_impl(extCtx, std::make_index_sequence<topology_t::size()>{});
-        }
-
-        template<typename external_ctx_t, std::size_t... I>
-        constexpr void bridge_inputs_impl(external_ctx_t& extCtx, std::index_sequence<I...>) {
-            (
-                [&] {
-                    using module_t = typename node_type_at<I>::module_type;
-                    if constexpr (detail::is_graph_input<module_t>::value) {
-                        using key_t = typename module_t::Manifest::template key_at<0>;
-                        auto& innerCtx = std::get<I>(mContexts);
-                        auto* ptr = innerCtx.template output_ptr<0, key_t>();
-                        if (ptr) {
-                            *ptr = extCtx.template input<key_t>();
-                        }
-                    }
-                }(), ...
-                    );
-        }
-
-        template<typename external_ctx_t, std::size_t... I>
-        constexpr void bridge_outputs_impl(external_ctx_t& extCtx, std::index_sequence<I...>) {
-            (
-                [&] {
-                    using module_t = typename node_type_at<I>::module_type;
-                    if constexpr (detail::is_graph_output<module_t>::value) {
-                        using key_t = typename module_t::Manifest::template key_at<0>;
-                        auto& innerCtx = std::get<I>(mContexts);
-                        auto* ptr = innerCtx.template input_ptr<0, key_t>();
-                        if (ptr) {
-                            extCtx.template output<key_t>() = *ptr;
-                        }
-                    }
-                }(), ...
-                    );
         }
 
         constexpr void init(graph_data_t& graphData) {
@@ -275,6 +237,75 @@ namespace ugraph {
         }
 
     private:
+
+
+        template<typename external_ctx_t, typename... Edges, std::size_t... I>
+        constexpr void rebind_inputs_from_external(external_ctx_t& extCtx, detail::type_list<Edges...>, std::index_sequence<I...>) {
+            (rebind_input_edge_from_external<Edges, external_ctx_t>(extCtx), ...);
+            (
+                [&] {
+                    using module_t = typename node_type_at<I>::module_type;
+                    if constexpr (detail::is_graph_input<module_t>::value) {
+                        using spec_t = typename detail::to_manifest_spec_t<module_t>;
+                        using key_t = typename detail::io_key<spec_t>::type;
+                        auto& ctx = std::get<I>(mContexts);
+                        ctx.template set_output_ptr<0, spec_t>(extCtx.template input_ptr<0, key_t>());
+                    }
+                }(), ...
+                    );
+        }
+
+        template<typename Edge, typename external_ctx_t>
+        constexpr void rebind_input_edge_from_external(external_ctx_t& extCtx) {
+            if constexpr (!detail::is_data_binding<Edge>::value) {
+                using tr = detail::edge_traits<Edge>;
+                using src_module_t = typename tr::src_vertex_t::module_type;
+                if constexpr (detail::is_graph_input<src_module_t>::value) {
+                    using dst_spec_t = typename tr::dst_port_t::spec_type;
+                    constexpr std::size_t dst_node_id = tr::dst_id;
+                    constexpr std::size_t dst_port_idx = tr::dst_port_index;
+                    constexpr std::size_t dst_node_index = topology_t::template index_of<dst_node_id>();
+                    auto& ctx = std::get<dst_node_index>(mContexts);
+                    using src_spec_t = typename detail::to_manifest_spec_t<src_module_t>;
+                    using key_t = typename detail::io_key<src_spec_t>::type;
+                    ctx.template set_input_ptr<dst_port_idx, dst_spec_t>(extCtx.template input_ptr<0, key_t>());
+                }
+            }
+        }
+
+        template<typename external_ctx_t, typename... Edges, std::size_t... I>
+        constexpr void rebind_outputs_to_external(external_ctx_t& extCtx, detail::type_list<Edges...>, std::index_sequence<I...>) {
+            (rebind_output_edge_to_external<Edges, external_ctx_t>(extCtx), ...);
+            (
+                [&] {
+                    using module_t = typename node_type_at<I>::module_type;
+                    if constexpr (detail::is_graph_output<module_t>::value) {
+                        using spec_t = typename detail::to_manifest_spec_t<module_t>;
+                        using key_t = typename detail::io_key<spec_t>::type;
+                        auto& ctx = std::get<I>(mContexts);
+                        ctx.template set_input_ptr<0, spec_t>(extCtx.template output_ptr<0, key_t>());
+                    }
+                }(), ...
+                    );
+        }
+
+        template<typename Edge, typename external_ctx_t>
+        constexpr void rebind_output_edge_to_external(external_ctx_t& extCtx) {
+            if constexpr (!detail::is_data_binding<Edge>::value) {
+                using tr = detail::edge_traits<Edge>;
+                using dst_module_t = typename tr::dst_vertex_t::module_type;
+                if constexpr (detail::is_graph_output<dst_module_t>::value) {
+                    using src_spec_t = typename tr::src_port_t::spec_type;
+                    constexpr std::size_t src_node_id = tr::src_id;
+                    constexpr std::size_t src_port_idx = tr::src_port_index;
+                    constexpr std::size_t src_node_index = topology_t::template index_of<src_node_id>();
+                    auto& ctx = std::get<src_node_index>(mContexts);
+                    using dst_spec_t = typename detail::to_manifest_spec_t<dst_module_t>;
+                    using key_t = typename detail::io_key<dst_spec_t>::type;
+                    ctx.template set_output_ptr<src_port_idx, src_spec_t>(extCtx.template output_ptr<0, key_t>());
+                }
+            }
+        }
 
         template<std::size_t node_id, std::size_t output_index, typename key_t, typename data_t>
         constexpr void bind_output_key_at(data_t& data) {
@@ -529,6 +560,12 @@ namespace ugraph {
 
         constexpr const graph_data_t& data() const {
             return mGraphData;
+        }
+
+        template<typename ctx_t>
+        constexpr void process(ctx_t& extCtx) {
+            base_t::process(extCtx);
+            rebind_graph_data();
         }
 
     private:
