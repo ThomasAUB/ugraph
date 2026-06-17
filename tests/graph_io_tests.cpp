@@ -27,7 +27,7 @@ TEST_CASE("GraphInput and GraphOutput basic bridging with process(ctx)") {
         ptNode.output<OutType>() >> gOut.input<OutType>()
     );
 
-    using manifest_t = typename decltype(g)::io_manifest;
+    using manifest_t = typename decltype(g)::Manifest;
 
     ugraph::Context<manifest_t> ctx;
     InType inVal { 42 };
@@ -68,7 +68,7 @@ TEST_CASE("GraphInput with multiple internal sinks") {
         scNode.output<OutType>() >> gOut.input<OutType>()
     );
 
-    using manifest_t = typename decltype(g)::io_manifest;
+    using manifest_t = typename decltype(g)::Manifest;
 
     ugraph::Context<manifest_t> ctx;
     InType inVal { 7 };
@@ -82,7 +82,7 @@ TEST_CASE("GraphInput with multiple internal sinks") {
     CHECK(outVal.value == 14);
 }
 
-TEST_CASE("io_manifest correctly flips GraphInput/GraphOutput specs") {
+TEST_CASE("Manifest correctly flips GraphInput/GraphOutput specs") {
 
     struct TagA {};
     struct TagB {};
@@ -156,7 +156,7 @@ TEST_CASE("ExternalDataGraph with GraphInput/GraphOutput bridging") {
         scNode.output<OutType>() >> gOut.input<OutType>()
     );
 
-    using manifest_t = typename decltype(g)::io_manifest;
+    using manifest_t = typename decltype(g)::Manifest;
     ugraph::Context<manifest_t> ctx;
     InType inVal { 10 };
     OutType outVal { 0 };
@@ -193,7 +193,7 @@ TEST_CASE("Graph with no GraphInput/GraphOutput nodes still processes correctly"
         srcNode.output<int>() >> sinkNode.input<int>()
     );
 
-    g.for_each([](auto& m, auto& ctx) { m.process(ctx); });
+    g.for_each([] (auto& m, auto& ctx) { m.process(ctx); });
 
     CHECK(sink.value == 99);
 }
@@ -211,7 +211,7 @@ struct Transform {
     }
 };
 
-TEST_CASE("GraphInputTag/GraphOutputTag with TaggedIO in io_manifest") {
+TEST_CASE("GraphInputTag/GraphOutputTag with TaggedIO in Manifest") {
 
     Transform t;
     ugraph::GraphInputTag<InTag, int> gInModule;
@@ -226,7 +226,7 @@ TEST_CASE("GraphInputTag/GraphOutputTag with TaggedIO in io_manifest") {
         tNode.output<OutTag>() >> gOut.input<OutTag>()
     );
 
-    using manifest_t = typename decltype(g)::io_manifest;
+    using manifest_t = typename decltype(g)::Manifest;
 
     static_assert(manifest_t::contains<InTag>);
     static_assert(manifest_t::contains<OutTag>);
@@ -272,7 +272,7 @@ TEST_CASE("process(ctx) called twice updates outputs correctly") {
         aNode.output<OutType>() >> gOut.input<OutType>()
     );
 
-    using manifest_t = typename decltype(g)::io_manifest;
+    using manifest_t = typename decltype(g)::Manifest;
     ugraph::Context<manifest_t> ctx;
     InType inVal { 100 };
     OutType outVal { 0 };

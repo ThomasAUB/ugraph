@@ -248,10 +248,10 @@ auto voiceGraph = ugraph::Graph(
 );
 ```
 
-The graph's `io_manifest` is automatically derived from its `GraphInput` and `GraphOutput` nodes:
+The graph's `Manifest` is automatically derived from its `GraphInput` and `GraphOutput` nodes:
 
 ```cpp
-using manifest_t = decltype(voiceGraph)::io_manifest;
+using manifest_t = decltype(voiceGraph)::Manifest;
 static_assert(manifest_t::input_count<Trigger>() == 1);
 static_assert(manifest_t::output_count<AudioBuff>() == 1);
 ```
