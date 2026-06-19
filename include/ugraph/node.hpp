@@ -157,23 +157,23 @@ namespace ugraph {
             using input_port_t = InputPort<T, I>;
             using output_port_t = OutputPort<T, I>;
 
-            static_assert(manifest_t::template contains<T>, "Type not declared in Manifest");
+            static_assert(manifest_t::template contains<T>, "node.input<T>() / node.output<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
 
             if constexpr (is_output) {
                 if constexpr (enforce_single) {
-                    static_assert(manifest_t::template output_count<T>() == 1, "Undefined output index");
+                    static_assert(manifest_t::template output_count<T>() == 1, "node.output<T>() called without an index, but T has multiple output ports — use node.output<T, I>() with the port index");
                 }
                 else {
-                    static_assert(manifest_t::template output_count<T>() > I, "Invalid output index");
+                    static_assert(manifest_t::template output_count<T>() > I, "node.output<T, I>(): port index I is out of range — check output_count<T> in this module's Manifest");
                 }
                 return output_port_t { *this };
             }
             else {
                 if constexpr (enforce_single) {
-                    static_assert(manifest_t::template input_count<T>() == 1, "Undefined input index");
+                    static_assert(manifest_t::template input_count<T>() == 1, "node.input<T>() called without an index, but T has multiple input ports — use node.input<T, I>() with the port index");
                 }
                 else {
-                    static_assert(manifest_t::template input_count<T>() > I, "Invalid input index");
+                    static_assert(manifest_t::template input_count<T>() > I, "node.input<T, I>(): port index I is out of range — check input_count<T> in this module's Manifest");
                 }
                 return input_port_t { *this };
             }
