@@ -13,7 +13,7 @@ TEST_CASE("example test") {
 
     Synth synth;
 
-    synth.print();
+    //synth.print();
 
     synth.setBufferSize(buffer_size);
 
