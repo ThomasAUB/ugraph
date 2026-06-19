@@ -135,7 +135,7 @@ namespace ugraph {
 
             template<typename data_t>
             static constexpr std::size_t count() {
-                static_assert(tuple_index_of_type_impl<data_t, storage_t>::value != static_cast<std::size_t>(-1), "Type not found in graph_data_t");
+                static_assert(tuple_index_of_type_impl<data_t, storage_t>::value != static_cast<std::size_t>(-1), "internal error: graph data slot not found for type — this is a ugraph bug, please report it");
                 return std::tuple_size_v<array_t<data_t>>;
             }
 
@@ -172,19 +172,19 @@ namespace ugraph {
             mModules(traits::build_modules(std::make_index_sequence<topology_t::size()>{}, es...)) {
             static_assert(
                 traits::has_unique_input_connections(),
-                "An input port is connected more than once"
+                "An input port is connected more than once — each input port may only be driven by a single output"
                 );
 
             static_assert(
                 traits::has_valid_output_connections(),
-                "An output port cannot be both connected to graph inputs and bound to external data"
+                "An output port is both connected to a graph input and bound to external data — a port can only have one driver"
                 );
 
             (process_binding_fn(es, this), ...);
 
             static_assert(
                 is_fully_wired_impl(std::make_index_sequence<topology_t::size()>{}),
-                "The graph is missing connections"
+                "The graph has unconnected required ports — add edges or bindings for all strict() IO specs, or mark the spec as non-strict"
                 );
         }
 
@@ -213,14 +213,14 @@ namespace ugraph {
 
         template<typename edge_t>
         constexpr const void* binding_ptr() const {
-            static_assert(detail::is_data_binding<edge_t>::value, "edge_t must be a data binding");
+            static_assert(detail::is_data_binding<edge_t>::value, "binding_ptr<edge_t>(): edge_t must be a data-binding edge (created with operator|) — graph edges (>>) are not data bindings");
 
             using port_t = typename binding_traits<edge_t>::port_type;
             using spec_t = typename port_t::spec_type;
             constexpr std::size_t node_id = port_t::node_type::id();
             constexpr std::size_t port_index = port_t::index();
             constexpr std::size_t node_index = topology_t::template index_of<node_id>();
-            static_assert(node_index != topology_t::invalid_index, "Invalid node id");
+            static_assert(node_index != topology_t::invalid_index, "Invalid node id — no vertex with this id exists in the graph topology; check that the NodeTag ID is included in the graph edges");
 
             const auto& ctx = std::get<node_index>(mContexts);
             if constexpr (detail::is_output_port<port_t>::value) {
@@ -310,15 +310,15 @@ namespace ugraph {
         template<std::size_t node_id, std::size_t output_index, typename key_t, typename data_t>
         constexpr void bind_output_key_at(data_t& data) {
             constexpr std::size_t node_index = topology_t::template index_of<node_id>();
-            static_assert(node_index != topology_t::invalid_index, "Invalid node id");
+            static_assert(node_index != topology_t::invalid_index, "Invalid node id — no vertex with this id exists in the graph topology; check that the NodeTag ID is included in the graph edges");
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             using spec_t = typename node_manifest::template spec_for<key_t>;
             using storage_t = typename detail::io_traits<spec_t>::type;
-            static_assert(node_manifest::template contains<key_t>, "Type not declared in node Manifest");
-            static_assert(std::is_same_v<std::remove_cv_t<std::remove_reference_t<data_t>>, storage_t>, "Bound data type does not match node output type");
+            static_assert(node_manifest::template contains<key_t>, "bind_output: type T is not declared in the target node's Manifest — add IO<T, In, Out> to that module's Manifest");
+            static_assert(std::is_same_v<std::remove_cv_t<std::remove_reference_t<data_t>>, storage_t>, "bind_output: data type does not match the node's output type for T — ensure the bound variable has the correct type");
             constexpr std::size_t out_count = node_manifest::template output_count<key_t>();
-            static_assert(output_index < out_count, "Invalid output index for this node/type");
+            static_assert(output_index < out_count, "bind_output: output port index exceeds the number of output ports for T on this node — check output_count in the node's Manifest");
 
             auto& ctx = std::get<node_index>(mContexts);
             ctx.template set_output_ptr<output_index, spec_t>(&data);
@@ -327,15 +327,15 @@ namespace ugraph {
         template<std::size_t node_id, std::size_t input_index, typename key_t, typename data_t>
         constexpr void bind_input_key_at(data_t& data) {
             constexpr std::size_t node_index = topology_t::template index_of<node_id>();
-            static_assert(node_index != topology_t::invalid_index, "Invalid node id");
+            static_assert(node_index != topology_t::invalid_index, "Invalid node id — no vertex with this id exists in the graph topology; check that the NodeTag ID is included in the graph edges");
             using node_type = node_type_at<node_index>;
             using node_manifest = typename node_type::module_type::Manifest;
             using spec_t = typename node_manifest::template spec_for<key_t>;
             using storage_t = typename detail::io_traits<spec_t>::type;
-            static_assert(node_manifest::template contains<key_t>, "Type not declared in node Manifest");
-            static_assert(std::is_same_v<std::remove_cv_t<std::remove_reference_t<data_t>>, storage_t>, "Bound data type does not match node input type");
+            static_assert(node_manifest::template contains<key_t>, "bind_input: type T is not declared in the target node's Manifest — add IO<T, In, Out> to that module's Manifest");
+            static_assert(std::is_same_v<std::remove_cv_t<std::remove_reference_t<data_t>>, storage_t>, "bind_input: data type does not match the node's input type for T — ensure the bound variable has the correct type");
             constexpr std::size_t in_count = node_manifest::template input_count<key_t>();
-            static_assert(input_index < in_count, "Invalid input index for this node/type");
+            static_assert(input_index < in_count, "bind_input: input port index exceeds the number of input ports for T on this node — check input_count in the node's Manifest");
 
             auto& ctx = std::get<node_index>(mContexts);
             ctx.template set_input_ptr<input_index, spec_t>(&data);
