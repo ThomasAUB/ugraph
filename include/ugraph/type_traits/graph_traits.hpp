@@ -43,7 +43,7 @@ namespace ugraph::detail {
 
         static_assert(
             std::is_same_v<typename src_traits::type, typename dst_traits::type>,
-            "Connected ports must use the same value type"
+            "Edge connects ports with incompatible value types — source and destination IO specs must use the same T in IO<T, ...>"
             );
 
         static constexpr bool use_value_key = !src_traits::is_tagged || !dst_traits::is_tagged;

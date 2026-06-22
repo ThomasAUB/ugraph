@@ -200,27 +200,27 @@ namespace ugraph {
 
         template<typename T>
         static constexpr std::size_t index() {
-            static_assert(contains<T>, "Type not declared in Manifest");
+            static_assert(contains<T>, "Manifest::index<T>(): type T is not declared in this Manifest — add IO<T, In, Out> to the Manifest");
             constexpr std::size_t result = detail::io_entry_index<T, ios_t...>();
-            static_assert(result != static_cast<std::size_t>(-1), "Type or tag not found in Manifest");
+            static_assert(result != static_cast<std::size_t>(-1), "Manifest::index<T>(): internal error — type passed contains<T> but io_entry_index returned -1; this is a ugraph bug");
             return result;
         }
 
         template<typename T>
         static constexpr std::size_t input_count() {
-            static_assert(contains<T>, "Type not declared in Manifest");
+            static_assert(contains<T>, "Manifest::input_count<T>(): type T is not declared in this Manifest — add IO<T, In, Out> to the Manifest");
             return (0 + ... + (detail::io_matches_key<T, ios_t>::value ? detail::io_traits<ios_t>::input_count : 0));
         }
 
         template<typename T>
         static constexpr std::size_t output_count() {
-            static_assert(contains<T>, "Type not declared in Manifest");
+            static_assert(contains<T>, "Manifest::output_count<T>(): type T is not declared in this Manifest — add IO<T, In, Out> to the Manifest");
             return (0 + ... + (detail::io_matches_key<T, ios_t>::value ? detail::io_traits<ios_t>::output_count : 0));
         }
 
         template<typename T>
         static constexpr bool strict_connection() {
-            static_assert(contains<T>, "Type not declared in Manifest");
+            static_assert(contains<T>, "Manifest::strict_connection<T>(): type T is not declared in this Manifest — add IO<T, In, Out> to the Manifest");
             using spec = spec_for<T>;
             return detail::io_traits<spec>::strict_connection;
         }

@@ -62,7 +62,7 @@ namespace ugraph::detail {
 
     template<typename T>
     struct type_list_index<T, type_list<>> {
-        static_assert(!std::is_same_v<T, T>, "Type not found in type_list");
+        static_assert(!std::is_same_v<T, T>, "type_list_index<T>: T was not found in the type_list — this is an internal ugraph error; the lookup should have been guarded by a contains check");
     };
 
     template<typename T, typename List>
