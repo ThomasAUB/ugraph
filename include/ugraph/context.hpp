@@ -52,61 +52,61 @@ namespace ugraph {
 
         template<typename key_t>
         constexpr inline const value_for_t<key_t>& input() const {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(input_count<key_t>() == 1, "This overload is only valid for single-input types");
+            static_assert(contains<key_t>(), "ctx.input<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(input_count<key_t>() == 1, "ctx.input<T>() requires exactly 1 input port for T — use ctx.input<T>(port_index) for multi-input types");
             return *slot_ptrs<key_t>()[0];
         }
 
         template<typename key_t>
         constexpr inline value_for_t<key_t>& output() {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(output_count<key_t>() == 1, "This overload is only valid for single-output types");
+            static_assert(contains<key_t>(), "ctx.output<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(output_count<key_t>() == 1, "ctx.output<T>() requires exactly 1 output port for T — use ctx.output<T>(port_index) for multi-output types");
             return *slot_ptrs<key_t>()[input_count<key_t>()];
         }
 
         template<typename key_t>
         constexpr inline const value_for_t<key_t>& input(std::size_t port) const {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(contains<key_t>(), "ctx.input<T>(port): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
             return *slot_ptrs<key_t>()[port];
         }
 
         template<typename key_t>
         constexpr inline value_for_t<key_t>& output(std::size_t port) {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(contains<key_t>(), "ctx.output<T>(port): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
             return *slot_ptrs<key_t>()[input_count<key_t>() + port];
         }
 
         template<typename key_t>
         constexpr inline auto inputs() const {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(input_count<key_t>() > 0, "No input ports for this type");
+            static_assert(contains<key_t>(), "ctx.inputs<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(input_count<key_t>() > 0, "ctx.inputs<T>(): T has no input ports — check input_count in the Manifest");
             return DataSpan<const value_for_t<key_t>>(slot_ptrs<key_t>().data(), input_count<key_t>());
         }
 
         template<typename key_t>
         constexpr inline auto outputs() {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(output_count<key_t>() > 0, "No output ports for this type");
+            static_assert(contains<key_t>(), "ctx.outputs<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(output_count<key_t>() > 0, "ctx.outputs<T>(): T has no output ports — check output_count in the Manifest");
             return DataSpan<value_for_t<key_t>>(slot_ptrs<key_t>().data() + input_count<key_t>(), output_count<key_t>());
         }
 
         template<typename key_t>
         constexpr inline auto inputs_ptr() const {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(input_count<key_t>() > 0, "No input ports for this type");
+            static_assert(contains<key_t>(), "ctx.inputs_ptr<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(input_count<key_t>() > 0, "ctx.inputs_ptr<T>(): T has no input ports — check input_count in the Manifest");
             return slot_ptrs<key_t>().data();
         }
 
         template<typename key_t>
         constexpr inline auto outputs_ptr() {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(output_count<key_t>() > 0, "No output ports for this type");
+            static_assert(contains<key_t>(), "ctx.outputs_ptr<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(output_count<key_t>() > 0, "ctx.outputs_ptr<T>(): T has no output ports — check output_count in the Manifest");
             return slot_ptrs<key_t>().data() + input_count<key_t>();
         }
 
         template<typename key_t, std::size_t I = 0>
         constexpr inline bool has_input() const {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(contains<key_t>(), "ctx.has_input<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
             if constexpr (I >= input_count<key_t>()) {
                 return false;
             }
@@ -117,7 +117,7 @@ namespace ugraph {
 
         template<typename key_t, std::size_t I = 0>
         constexpr inline bool has_output() const {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
+            static_assert(contains<key_t>(), "ctx.has_output<T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
             if constexpr (I >= output_count<key_t>()) {
                 return false;
             }
@@ -133,38 +133,38 @@ namespace ugraph {
 
         template<typename data_t, std::size_t N>
         constexpr void set_ios(const std::array<data_t*, N>& inData) {
-            static_assert(manifest_t::template spec_count_for_value<data_t> == 1, "set_ios(data array) requires exactly one untagged spec for this type");
-            static_assert(N == input_count<data_t>() + output_count<data_t>(), "Invalid IO array size for this type");
+            static_assert(manifest_t::template spec_count_for_value<data_t> == 1, "set_ios(array): T must have exactly one untagged IO spec — use the tagged overload for types with multiple specs");
+            static_assert(N == input_count<data_t>() + output_count<data_t>(), "set_ios(array): array size N must equal input_count<T> + output_count<T>");
             slot_ptrs<data_t>() = inData;
         }
 
         template<std::size_t I, typename key_t>
         constexpr void set_input_ptr(value_for_t<key_t>* ptr) {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(I < input_count<key_t>(), "Invalid input index");
+            static_assert(contains<key_t>(), "set_input_ptr<I, T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(I < input_count<key_t>(), "set_input_ptr<I, T>(): index I is out of range — check input_count<T> in the Manifest");
             auto& data = slot_ptrs<key_t>();
             data[I] = ptr;
         }
 
         template<std::size_t I, typename key_t>
         constexpr value_for_t<key_t>* input_ptr() const {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(I < input_count<key_t>(), "Invalid input index");
+            static_assert(contains<key_t>(), "input_ptr<I, T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(I < input_count<key_t>(), "input_ptr<I, T>(): index I is out of range — check input_count<T> in the Manifest");
             return slot_ptrs<key_t>()[I];
         }
 
         template<std::size_t I, typename key_t>
         constexpr void set_output_ptr(value_for_t<key_t>* ptr) {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(I < output_count<key_t>(), "Invalid output index");
+            static_assert(contains<key_t>(), "set_output_ptr<I, T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(I < output_count<key_t>(), "set_output_ptr<I, T>(): index I is out of range — check output_count<T> in the Manifest");
             auto& data = slot_ptrs<key_t>();
             data[input_count<key_t>() + I] = ptr;
         }
 
         template<std::size_t I, typename key_t>
         constexpr value_for_t<key_t>* output_ptr() const {
-            static_assert(contains<key_t>(), "Type not declared in Manifest");
-            static_assert(I < output_count<key_t>(), "Invalid output index");
+            static_assert(contains<key_t>(), "output_ptr<I, T>(): type T is not declared in this module's Manifest — add IO<T, In, Out> to the Manifest");
+            static_assert(I < output_count<key_t>(), "output_ptr<I, T>(): index I is out of range — check output_count<T> in the Manifest");
             return slot_ptrs<key_t>()[input_count<key_t>() + I];
         }
 

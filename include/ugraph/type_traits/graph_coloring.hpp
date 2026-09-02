@@ -160,7 +160,7 @@ namespace ugraph::detail {
         template<std::size_t VID, std::size_t PORT>
         static constexpr std::size_t data_index_for_output() {
             constexpr std::size_t pidx = find_prod_index_impl<VID, PORT, 0>::value;
-            static_assert(pidx != static_cast<std::size_t>(-1), "(vertex id, output port) not a producer in this graph");
+            static_assert(pidx != static_cast<std::size_t>(-1), "data_index_for_output<VID, PORT>(): no producer found — vertex VID has no outgoing edge from output port PORT in this graph");
             return assignment.buf[pidx];
         }
 
@@ -168,7 +168,7 @@ namespace ugraph::detail {
         static constexpr std::size_t data_index_for_input() {
             constexpr std::size_t src_vid = find_input_edge<VID, PORT>::src_vid;
             constexpr std::size_t src_port = find_input_edge<VID, PORT>::src_port;
-            static_assert(src_vid != static_cast<std::size_t>(-1), "No edge found feeding (vertex id, input port)");
+            static_assert(src_vid != static_cast<std::size_t>(-1), "data_index_for_input<VID, PORT>(): no edge found driving input port PORT on vertex VID — add an edge connecting to this port");
             return data_index_for_output<src_vid, src_port>();
         }
 

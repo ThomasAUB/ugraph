@@ -218,7 +218,7 @@ namespace ugraph {
 
         template<std::size_t I>
         static constexpr std::size_t id_at() {
-            static_assert(I < vertex_count, "Topology::id_at index out of range");
+            static_assert(I < vertex_count, "Topology::id_at<I>(): index I is out of range — must be less than the number of vertices in this topology");
             return topo.order[I];
         }
 
@@ -239,7 +239,7 @@ namespace ugraph {
 
         template<std::size_t Id>
         static constexpr bool is_entry_id() {
-            static_assert(has_id<Id>(), "Vertex id not found");
+            static_assert(has_id<Id>(), "is_entry_id<Id>(): no vertex with this id exists in the topology — check that the NodeTag ID matches");
             for (const auto& edge : edges_ids) {
                 if (edge.second == Id) {
                     return false;
@@ -250,7 +250,7 @@ namespace ugraph {
 
         template<std::size_t Id>
         static constexpr bool is_exit_id() {
-            static_assert(has_id<Id>(), "Vertex id not found");
+            static_assert(has_id<Id>(), "is_exit_id<Id>(): no vertex with this id exists in the topology — check that the NodeTag ID matches");
             for (const auto& edge : edges_ids) {
                 if (edge.first == Id) {
                     return false;
@@ -261,13 +261,13 @@ namespace ugraph {
 
         template<std::size_t I>
         static constexpr bool is_entry() {
-            static_assert(I < vertex_count, "Topology::is_entry index out of range");
+            static_assert(I < vertex_count, "Topology::is_entry<I>(): index I is out of range — must be less than the number of vertices in this topology");
             return is_entry_id<id_at<I>()>();
         }
 
         template<std::size_t I>
         static constexpr bool is_exit() {
-            static_assert(I < vertex_count, "Topology::is_exit index out of range");
+            static_assert(I < vertex_count, "Topology::is_exit<I>(): index I is out of range — must be less than the number of vertices in this topology");
             return is_exit_id<id_at<I>()>();
         }
 
@@ -277,7 +277,7 @@ namespace ugraph {
             template<std::size_t... I>
             static auto helper(std::index_sequence<I...>) -> typename find_impl<Id, typename detail::type_list_at<I, vertex_list_t>::type...>::type;
             using type = decltype(helper(std::make_index_sequence<vertex_count>{}));
-            static_assert(!std::is_void_v<type>, "Vertex id not found");
+            static_assert(!std::is_void_v<type>, "find_type_by_id<Id>: no vertex with this id exists in the topology — check that the NodeTag ID matches");
         };
 
         template<std::size_t I>
