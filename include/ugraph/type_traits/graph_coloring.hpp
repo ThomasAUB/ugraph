@@ -37,20 +37,37 @@ namespace ugraph::detail {
         using producer_list = typename fold_prod<detail::type_list<>, edges_t...>::type;
 
         static constexpr std::size_t producer_count = detail::type_list_size<producer_list>::value;
+        static constexpr std::size_t npos = static_cast<std::size_t>(-1);
+        static constexpr std::size_t arr_size = producer_count == 0 ? 1 : producer_count;
 
         static constexpr std::size_t id_to_pos(std::size_t id) {
             auto ids = topology_t::ids();
             for (std::size_t i = 0; i < topology_t::size(); ++i) if (ids[i] == id) return i;
-            return static_cast<std::size_t>(-1);
+            return npos;
         }
 
-        template<std::size_t VID, std::size_t PORT, std::size_t I>
-        struct find_prod_index_impl {
-            using PT = typename detail::type_list_at<I, producer_list>::type;
-            static constexpr std::size_t value = (PT::vid == VID && PT::port == PORT) ? I : find_prod_index_impl<VID, PORT, I + 1>::value;
+        // Producer (vid, port) keys flattened into arrays once, so lookups become a
+        // constexpr scan instead of a recursive class template per (VID, PORT) query.
+        template<typename List>
+        struct producer_keys;
+
+        template<typename... Ps>
+        struct producer_keys<detail::type_list<Ps...>> {
+            static constexpr std::array<std::size_t, arr_size> vids() { return { Ps::vid... }; }
+            static constexpr std::array<std::size_t, arr_size> ports() { return { Ps::port... }; }
         };
-        template<std::size_t VID, std::size_t PORT>
-        struct find_prod_index_impl<VID, PORT, producer_count> { static constexpr std::size_t value = static_cast<std::size_t>(-1); };
+
+        static constexpr auto prod_vids = producer_keys<producer_list>::vids();
+        static constexpr auto prod_ports = producer_keys<producer_list>::ports();
+
+        static constexpr std::size_t find_prod_index(std::size_t vid, std::size_t port) {
+            for (std::size_t i = 0; i < producer_count; ++i) {
+                if (prod_vids[i] == vid && prod_ports[i] == port) {
+                    return i;
+                }
+            }
+            return npos;
+        }
 
         struct lifetimes_t {
             std::array<std::size_t, producer_count == 0 ? 1 : producer_count> start {}, end {};
@@ -68,7 +85,7 @@ namespace ugraph::detail {
 
                 ([&] () {
                     using ET = edge_traits<edges_t>;
-                    constexpr std::size_t idx = find_prod_index_impl<ET::src_id, ET::src_port_index, 0>::value;
+                    const std::size_t idx = find_prod_index(ET::src_id, ET::src_port_index);
                     const std::size_t dpos = id_to_pos(ET::dst_id);
                     if (dpos > lt.end[idx]) {
                         lt.end[idx] = dpos;
@@ -137,49 +154,55 @@ namespace ugraph::detail {
 
         static constexpr assignment_t assignment = build_assignment();
 
-        template<std::size_t DVID, std::size_t DPORT, typename... Es>
-        struct find_input_edge_impl;
+        // Edge endpoints flattened once; the per-(VID, PORT) search becomes a constexpr scan
+        // rather than a recursive class template chain instantiated per query.
+        static constexpr std::size_t edge_count = sizeof...(edges_t);
+        static constexpr std::size_t edge_arr_size = edge_count == 0 ? 1 : edge_count;
 
-        template<std::size_t DVID, std::size_t DPORT>
-        struct find_input_edge_impl<DVID, DPORT> {
-            static constexpr std::size_t src_vid = static_cast<std::size_t>(-1);
-            static constexpr std::size_t src_port = static_cast<std::size_t>(-1);
-        };
+        static constexpr std::array<std::size_t, edge_arr_size> edge_src_ids { edge_traits<edges_t>::src_id... };
+        static constexpr std::array<std::size_t, edge_arr_size> edge_src_ports { edge_traits<edges_t>::src_port_index... };
+        static constexpr std::array<std::size_t, edge_arr_size> edge_dst_ids { edge_traits<edges_t>::dst_id... };
+        static constexpr std::array<std::size_t, edge_arr_size> edge_dst_ports { edge_traits<edges_t>::dst_port_index... };
 
-        template<std::size_t DVID, std::size_t DPORT, typename E0, typename... Rest>
-        struct find_input_edge_impl<DVID, DPORT, E0, Rest...> {
-            using tr = edge_traits<E0>;
-            static constexpr bool match = (tr::dst_id == DVID && tr::dst_port_index == DPORT);
-            static constexpr std::size_t src_vid = match ? tr::src_id : find_input_edge_impl<DVID, DPORT, Rest...>::src_vid;
-            static constexpr std::size_t src_port = match ? tr::src_port_index : find_input_edge_impl<DVID, DPORT, Rest...>::src_port;
-        };
+        struct src_ref { std::size_t vid, port; };
 
-        template<std::size_t DVID, std::size_t DPORT>
-        struct find_input_edge : find_input_edge_impl<DVID, DPORT, edges_t...> {};
-
-        template<std::size_t VID, std::size_t PORT>
-        static constexpr std::size_t data_index_for_output() {
-            constexpr std::size_t pidx = find_prod_index_impl<VID, PORT, 0>::value;
-            static_assert(pidx != static_cast<std::size_t>(-1), "data_index_for_output<VID, PORT>(): no producer found — vertex VID has no outgoing edge from output port PORT in this graph");
-            return assignment.buf[pidx];
-        }
-
-        template<std::size_t VID, std::size_t PORT>
-        static constexpr std::size_t data_index_for_input() {
-            constexpr std::size_t src_vid = find_input_edge<VID, PORT>::src_vid;
-            constexpr std::size_t src_port = find_input_edge<VID, PORT>::src_port;
-            static_assert(src_vid != static_cast<std::size_t>(-1), "data_index_for_input<VID, PORT>(): no edge found driving input port PORT on vertex VID — add an edge connecting to this port");
-            return data_index_for_output<src_vid, src_port>();
+        static constexpr src_ref find_input_source(std::size_t dvid, std::size_t dport) {
+            for (std::size_t i = 0; i < edge_count; ++i) {
+                if (edge_dst_ids[i] == dvid && edge_dst_ports[i] == dport) {
+                    return { edge_src_ids[i], edge_src_ports[i] };
+                }
+            }
+            return { npos, npos };
         }
 
     public:
         static constexpr std::size_t data_count() { return assignment.count; }
 
-        template<std::size_t VID, std::size_t PORT>
-        static constexpr std::size_t output_data_index() { return data_index_for_output<VID, PORT>(); }
+        // Non-template accessors: one instantiation for the whole coloring instead of one per
+        // queried (vertex, port) pair. The template forms below remain for API compatibility.
+        static constexpr std::size_t output_data_index(std::size_t vid, std::size_t port) {
+            const std::size_t pidx = find_prod_index(vid, port);
+            return pidx == npos ? npos : assignment.buf[pidx];
+        }
+
+        static constexpr std::size_t input_data_index(std::size_t vid, std::size_t port) {
+            const src_ref s = find_input_source(vid, port);
+            return s.vid == npos ? npos : output_data_index(s.vid, s.port);
+        }
 
         template<std::size_t VID, std::size_t PORT>
-        static constexpr std::size_t input_data_index() { return data_index_for_input<VID, PORT>(); }
+        static constexpr std::size_t output_data_index() {
+            constexpr std::size_t r = output_data_index(VID, PORT);
+            static_assert(r != npos, "output_data_index<VID, PORT>(): no producer found — vertex VID has no outgoing edge from output port PORT in this graph");
+            return r;
+        }
+
+        template<std::size_t VID, std::size_t PORT>
+        static constexpr std::size_t input_data_index() {
+            constexpr std::size_t r = input_data_index(VID, PORT);
+            static_assert(r != npos, "input_data_index<VID, PORT>(): no edge found driving input port PORT on vertex VID — add an edge connecting to this port");
+            return r;
+        }
     };
 
     template<typename Topology, typename List>
@@ -192,6 +215,8 @@ namespace ugraph::detail {
 
     struct empty_coloring {
         static constexpr std::size_t data_count() { return 0; }
+        static constexpr std::size_t input_data_index(std::size_t, std::size_t) { return static_cast<std::size_t>(-1); }
+        static constexpr std::size_t output_data_index(std::size_t, std::size_t) { return static_cast<std::size_t>(-1); }
         template<std::size_t, std::size_t>
         static constexpr std::size_t input_data_index() { return static_cast<std::size_t>(-1); }
         template<std::size_t, std::size_t>

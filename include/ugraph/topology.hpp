@@ -181,31 +181,61 @@ namespace ugraph {
 
         static constexpr auto topo = compute_topology();
 
-        // Mapping from vertex id -> vertex type
-        template<std::size_t Id, typename V, typename... Vs>
-        struct find_impl {
-            using type = std::conditional_t<(V::id() == Id), V, typename find_impl<Id, Vs...>::type>;
+        // Declaration-order position of a vertex id. Plain constexpr function: evaluated by the
+        // constant evaluator instead of instantiating one class template per lookup.
+        static constexpr std::size_t decl_index_of_id(std::size_t id) {
+            for (std::size_t i = 0; i < vertex_count; ++i) {
+                if (vertex_ids[i] == id) {
+                    return i;
+                }
+            }
+            return static_cast<std::size_t>(-1);
+        }
+
+        // topological position -> declaration index, computed once for the whole topology.
+        static constexpr std::array<std::size_t, vertex_count> make_topo_to_decl() {
+            std::array<std::size_t, vertex_count> m {};
+            for (std::size_t i = 0; i < vertex_count; ++i) {
+                m[i] = decl_index_of_id(topo.order[i]);
+            }
+            return m;
+        }
+        static constexpr std::array<std::size_t, vertex_count> topo_to_decl = make_topo_to_decl();
+
+    public:
+
+        // Query vertex type by id at compile-time: Topology::find_type_by_id<VID>::type
+        template<std::size_t Id>
+        struct find_type_by_id {
+            static constexpr std::size_t decl_index = decl_index_of_id(Id);
+            static_assert(decl_index != static_cast<std::size_t>(-1), "find_type_by_id<Id>: no vertex with this id exists in the topology — check that the NodeTag ID matches");
+            using type = typename detail::type_list_at<
+                decl_index == static_cast<std::size_t>(-1) ? 0 : decl_index,
+                vertex_list_t
+            >::type;
         };
-        template<std::size_t Id, typename V>
-        struct find_impl<Id, V> {
-            using type = std::conditional_t<(V::id() == Id), V, void>;
-        };
+
+        // O(1) per index: no id search, no per-index class template instantiation.
+        template<std::size_t I>
+        using type_at = typename detail::type_list_at<topo_to_decl[I], vertex_list_t>::type;
+
+    private:
 
         template<std::size_t... I, typename F>
         static constexpr void for_each_impl(std::index_sequence<I...>, F&& f) {
-            (f(typename find_type_by_id<topo.order[I]>::type {}), ...);
+            (f(type_at<I> {}), ...);
         }
 
         // Helper for variadic apply: invokes a callable once with all vertex types.
         // Supports both void and non-void returning callables in a strictly standard-compliant way.
         template<typename F, std::size_t... I>
         static constexpr auto apply_variadic_impl(F&& f, std::index_sequence<I...>) {
-            using result_t = std::invoke_result_t<F, typename find_type_by_id<topo.order[I]>::type...>;
+            using result_t = std::invoke_result_t<F, type_at<I>...>;
             if constexpr (std::is_void_v<result_t>) {
-                std::forward<F>(f)(typename find_type_by_id<topo.order[I]>::type {}...);
+                std::forward<F>(f)(type_at<I> {}...);
             }
             else {
-                return std::forward<F>(f)(typename find_type_by_id<topo.order[I]>::type {}...);
+                return std::forward<F>(f)(type_at<I> {}...);
             }
         }
 
@@ -216,6 +246,39 @@ namespace ugraph {
         static constexpr std::size_t size() { return vertex_count; }
         static constexpr auto edges() { return edges_ids; }
 
+        // Non-template overloads: one instantiation for the whole topology instead of one
+        // per queried index/id. The template forms below stay for API compatibility.
+        static constexpr std::size_t id_at(std::size_t i) { return topo.order[i]; }
+
+        static constexpr std::size_t index_of(std::size_t id) {
+            for (std::size_t i = 0; i < vertex_count; ++i) {
+                if (topo.order[i] == id) {
+                    return i;
+                }
+            }
+            return invalid_index;
+        }
+
+        static constexpr bool has_id(std::size_t id) { return index_of(id) != invalid_index; }
+
+        static constexpr bool is_entry_id(std::size_t id) {
+            for (const auto& edge : edges_ids) {
+                if (edge.second == id) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        static constexpr bool is_exit_id(std::size_t id) {
+            for (const auto& edge : edges_ids) {
+                if (edge.first == id) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         template<std::size_t I>
         static constexpr std::size_t id_at() {
             static_assert(I < vertex_count, "Topology::id_at<I>(): index I is out of range — must be less than the number of vertices in this topology");
@@ -224,64 +287,37 @@ namespace ugraph {
 
         template<std::size_t Id>
         static constexpr std::size_t index_of() {
-            for (std::size_t i = 0; i < vertex_count; ++i) {
-                if (topo.order[i] == Id) {
-                    return i;
-                }
-            }
-            return invalid_index;
+            return index_of(Id);
         }
 
         template<std::size_t Id>
         static constexpr bool has_id() {
-            return index_of<Id>() != invalid_index;
+            return has_id(Id);
         }
 
         template<std::size_t Id>
         static constexpr bool is_entry_id() {
-            static_assert(has_id<Id>(), "is_entry_id<Id>(): no vertex with this id exists in the topology — check that the NodeTag ID matches");
-            for (const auto& edge : edges_ids) {
-                if (edge.second == Id) {
-                    return false;
-                }
-            }
-            return true;
+            static_assert(has_id(Id), "is_entry_id<Id>(): no vertex with this id exists in the topology — check that the NodeTag ID matches");
+            return is_entry_id(Id);
         }
 
         template<std::size_t Id>
         static constexpr bool is_exit_id() {
-            static_assert(has_id<Id>(), "is_exit_id<Id>(): no vertex with this id exists in the topology — check that the NodeTag ID matches");
-            for (const auto& edge : edges_ids) {
-                if (edge.first == Id) {
-                    return false;
-                }
-            }
-            return true;
+            static_assert(has_id(Id), "is_exit_id<Id>(): no vertex with this id exists in the topology — check that the NodeTag ID matches");
+            return is_exit_id(Id);
         }
 
         template<std::size_t I>
         static constexpr bool is_entry() {
             static_assert(I < vertex_count, "Topology::is_entry<I>(): index I is out of range — must be less than the number of vertices in this topology");
-            return is_entry_id<id_at<I>()>();
+            return is_entry_id(topo.order[I]);
         }
 
         template<std::size_t I>
         static constexpr bool is_exit() {
             static_assert(I < vertex_count, "Topology::is_exit<I>(): index I is out of range — must be less than the number of vertices in this topology");
-            return is_exit_id<id_at<I>()>();
+            return is_exit_id(topo.order[I]);
         }
-
-        // Query vertex type by id at compile-time: Topology::find_type_by_id<VID>::type
-        template<std::size_t Id>
-        struct find_type_by_id {
-            template<std::size_t... I>
-            static auto helper(std::index_sequence<I...>) -> typename find_impl<Id, typename detail::type_list_at<I, vertex_list_t>::type...>::type;
-            using type = decltype(helper(std::make_index_sequence<vertex_count>{}));
-            static_assert(!std::is_void_v<type>, "find_type_by_id<Id>: no vertex with this id exists in the topology — check that the NodeTag ID matches");
-        };
-
-        template<std::size_t I>
-        using type_at = typename find_type_by_id<id_at<I>()>::type;
 
         // for_each: Visit each vertex type in topological order. The callable receives a distinct
         // default-constructed tag object instance for each vertex type.
